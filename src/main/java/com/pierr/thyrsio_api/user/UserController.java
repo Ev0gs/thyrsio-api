@@ -1,6 +1,5 @@
 package com.pierr.thyrsio_api.user;
 
-import com.pierr.thyrsio_api.user.dto.CreateUserRequest;
 import com.pierr.thyrsio_api.user.dto.UpdateUserRequest;
 import com.pierr.thyrsio_api.user.dto.UserResponse;
 import jakarta.validation.Valid;
@@ -19,12 +18,6 @@ public class UserController {
 
     public UserController(UserService userService) {
         this.userService = userService;
-    }
-
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public UserResponse createUser(@Valid @RequestBody CreateUserRequest request) {
-        return userService.create(request);
     }
 
     @GetMapping("/{id}")
