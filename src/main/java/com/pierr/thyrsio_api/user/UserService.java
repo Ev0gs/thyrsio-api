@@ -26,12 +26,6 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    public UserResponse getByEmail(String email)
-    {
-        return UserResponse.from(findUserByEmail(email));
-    }
-
-    @Transactional(readOnly = true)
     public Page<UserResponse> getAll(Pageable pageable){
         return userRepository.findAll(pageable).map(UserResponse::from);
     }
@@ -68,11 +62,5 @@ public class UserService {
     {
         return userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
-    }
-
-    private User findUserByEmail(String email)
-    {
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new UserNotFoundException(email));
     }
 }

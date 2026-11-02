@@ -2,6 +2,7 @@ package com.pierr.thyrsio_api.auth;
 
 import com.pierr.thyrsio_api.auth.dto.LoginRequest;
 import com.pierr.thyrsio_api.auth.dto.RegisterRequest;
+import com.pierr.thyrsio_api.security.AppUserPrincipal;
 import com.pierr.thyrsio_api.user.UserService;
 import com.pierr.thyrsio_api.user.dto.UserResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +15,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -57,6 +59,14 @@ public class AuthController {
 
         securityContextRepository.saveContext(context, httpServletRequest, httpServletResponse);
 
-        return userService.getByEmail(authentication.getName());
+        AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
+        return userService.getById(principal.id());
+    }
+
+    @GetMapping("/csrf")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void csrf(CsrfToken csrfToken) {
+        // Lire le token force Spring à le générer et à l'envoyer dans le cookie XSRF-TOKEN
+        csrfToken.getToken();
     }
 }
