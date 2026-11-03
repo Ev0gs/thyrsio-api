@@ -1,6 +1,9 @@
 package com.pierr.thyrsio_api.auth;
 
 import com.pierr.thyrsio_api.TestcontainersConfig;
+import com.pierr.thyrsio_api.user.Role;
+import com.pierr.thyrsio_api.user.User;
+import com.pierr.thyrsio_api.user.UserRepository;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,8 +18,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.UUID;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -29,6 +31,8 @@ public class AuthIntegrationTest {
 
     @Autowired
     MockMvc mockMvc;
+    @Autowired
+    private UserRepository userRepository;
 
     @Test
     void register_creates_user_without_exposing_password() throws Exception {
@@ -78,6 +82,93 @@ public class AuthIntegrationTest {
         mockMvc.perform(get("/api/users/me").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email));
+    }
+
+    @Test
+    void register_with_already_taken_email_returns_409() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+
+        mockMvc.perform(post("/api/auth/register")
+                    .with(xsrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(registerJson("Pierre", email, PASSWORD)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void login_with_wrong_password_returns_401() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+
+        mockMvc.perform(post("/api/auth/login")
+                        .with(xsrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "%s", "password": "%s"}
+                                """.formatted(email, "wrongpassword")))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void get_users_with_user_role_returns_403() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+        MockHttpSession session = login(email, PASSWORD);
+
+        mockMvc.perform(get("/api/users").session(session))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void patch_with_new_email_then_get_me_returns_200() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+        MockHttpSession session = login(email, PASSWORD);
+
+        String newEmail = uniqueEmail();
+
+        mockMvc.perform(patch("/api/users/me").session(session)
+                        .with(xsrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                        {"email": "%s"}
+                        """.formatted(newEmail)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/users/me").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(newEmail));
+    }
+
+    @Test
+    void delete_me_then_get_me_returns_401() throws Exception
+    {
+        String email = uniqueEmail();
+        register(email);
+        MockHttpSession session = login(email, PASSWORD);
+
+        mockMvc.perform(delete("/api/users/me").session(session)
+                        .with(xsrf()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/users/me").session(session))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void get_users_with_admin_returns_200() throws Exception {
+        String email = uniqueEmail();
+        register(email);
+
+        User user = userRepository.findByEmail(email).orElseThrow();
+        user.setRole(Role.ADMIN);
+        userRepository.save(user);
+
+        MockHttpSession session = login(email, PASSWORD);
+
+        mockMvc.perform(get("/api/users").session(session))
+                .andExpect(status().isOk());
     }
 
     // --- Méthodes utilitaires ---
