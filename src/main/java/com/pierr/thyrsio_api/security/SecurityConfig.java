@@ -30,6 +30,7 @@ public class SecurityConfig {
         http
                 .csrf(CsrfConfigurer::spa)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/users/me").authenticated()
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/auth/**").permitAll()
