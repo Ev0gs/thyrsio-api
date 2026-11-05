@@ -13,17 +13,16 @@ public class User {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    // Lien avec le compte Keycloak (claim "sub" du token). Ne change jamais.
+    @Column(nullable = false, updatable = false, unique = true)
+    private UUID keycloakId;
+
+    // Copies synchronisées depuis Keycloak, qui reste la source de vérité
     @Column(nullable = false)
     private String name;
 
     @Column(nullable = false)
     private String email;
-
-    @Column(nullable = false)
-    private String passwordHash;
-
-    @Enumerated(EnumType.STRING)
-    private Role role = Role.USER;
 
     @Column(updatable = false)
     private Instant createdAt;
@@ -31,46 +30,28 @@ public class User {
     protected User() {
     }
 
-    public User(String name, String email, String passwordHash) {
+    public User(UUID keycloakId, String name, String email) {
+        this.keycloakId = keycloakId;
         this.name = name;
         this.email = email;
-        this.passwordHash = passwordHash;
     }
 
-    public UUID getId() {
-        return id;
-    }
+    public UUID getId() { return id; }
 
-    public String getName() {
-        return name;
-    }
+    public UUID getKeycloakId() { return keycloakId; }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    public String getName() { return name; }
 
-    public String getEmail() {
-        return email;
-    }
+    public void setName(String name) { this.name = name; }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
+    public String getEmail() { return email; }
 
-    public String getPasswordHash() { return passwordHash; }
+    public void setEmail(String email) { this.email = email; }
 
-    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
-
-    public Role getRole() { return role; }
-
-    public void setRole(Role role) { this.role = role; }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+    public Instant getCreatedAt() { return createdAt; }
 
     @PrePersist
-    protected void onCreate(){
+    protected void onCreate() {
         createdAt = Instant.now();
     }
 }

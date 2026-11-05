@@ -75,10 +75,10 @@
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
 
-		<!-- Security -->
+		<!-- Vérification des tokens JWT de Keycloak (inclut Spring Security) -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-security</artifactId>
+			<artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
 		</dependency>
 
 		<!-- Tests de sécurité : csrf(), etc. -->

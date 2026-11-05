@@ -1,7 +1,6 @@
 package com.pierr.thyrsio_api.auth;
 
 import com.pierr.thyrsio_api.TestcontainersConfig;
-import com.pierr.thyrsio_api.user.Role;
 import com.pierr.thyrsio_api.user.User;
 import com.pierr.thyrsio_api.user.UserRepository;
 import jakarta.servlet.http.Cookie;

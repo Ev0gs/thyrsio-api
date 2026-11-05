@@ -56,6 +56,23 @@ public class UserService {
         userRepository.delete(findUserById(id));
     }
 
+    /**
+     * Renvoie le profil Thyrsio de l'utilisateur connecté.
+     * Le crée au premier appel, puis recopie à chaque appel l'email et le nom venant de Keycloak.
+     */
+    @Transactional
+    public UserResponse syncCurrentUser(UUID keycloakId, String name, String email) {
+        User user = userRepository.findByKeycloakId(keycloakId).orElse(null);
+
+        if(user == null) {
+            user = userRepository.save(new User(keycloakId, name, email));
+        } else {
+            user.setName(name);
+            user.setEmail(email);
+        }
+        return UserResponse.from(user);
+    }
+
     // --- Méthodes utilitaires ---
 
     private User findUserById(UUID id)
