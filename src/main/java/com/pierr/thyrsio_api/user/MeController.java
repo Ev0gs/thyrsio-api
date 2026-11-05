@@ -7,11 +7,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
@@ -34,5 +33,16 @@ public class MeController {
     public UserResponse get(@Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
         CurrentUser me = CurrentUser.from(jwt);
         return userService.syncCurrentUser(me.keycloakId(), me.name(), me.email());
+    }
+
+    @Operation(summary = "Supprimer mon compte",
+            description = "Supprime le compte Keycloak et le profil Thyrsio. Le front doit ensuite déconnecter l'utilisateur.")
+    @ApiResponse(responseCode = "204", description = "Compte supprimé")
+    @ApiResponse(responseCode = "401", description = "Token absent, invalide ou expiré")
+    @ApiResponse(responseCode = "502", description = "Keycloak ne répond pas correctement")
+    @DeleteMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
+        userService.deleteAccount(CurrentUser.from(jwt).keycloakId());
     }
 }
