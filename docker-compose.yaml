@@ -24,7 +24,9 @@ services:
     container_name: thyrsio-keycloak
     restart: unless-stopped
     # Mode développement : HTTP autorisé, cache désactivé, démarrage rapide
-    command: start-dev
+    # --import-realm : importe les fichiers de /opt/keycloak/data/import au démarrage,
+    # seulement si le realm n'existe pas encore (une config existante n'est jamais écrasée)
+    command: start-dev --import-realm
     environment:
       # Compte administrateur de la console Keycloak (créé au premier démarrage)
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
@@ -34,6 +36,10 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      # Utilisé par ${KEYCLOAK_ADMIN_CLIENT_SECRET} dans le fichier du realm
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+    volumes:
+      - ./keycloak/import:/opt/keycloak/data/import:ro
     ports:
       # 8180 côté machine : le port 8080 est déjà pris par ton API Spring
       - "8180:8080"
@@ -55,6 +61,15 @@ services:
         condition: service_healthy
     volumes:
       - pgadmindata:/var/lib/pgadmin
+
+  mailpit:
+    image: axllent/mailpit:v1.28.1
+    container_name: thyrsio-mailpit
+    restart: unless-stopped
+    ports:
+      # Interface web pour lire les emails capturés : http://localhost:8025
+      - "8025:8025"
+    # Le port SMTP (1025) n'est pas exposé : seul Keycloak l'utilise, via le réseau Docker
 
 volumes:
   pgdata:
