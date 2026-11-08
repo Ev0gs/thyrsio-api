@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.referentiel;
 
+import com.pierr.thyrsio_api.common.Codes;
 import com.pierr.thyrsio_api.common.DuplicateCodeException;
 import com.pierr.thyrsio_api.common.ResourceNotFoundException;
 import com.pierr.thyrsio_api.referentiel.dto.ArticleResponse;
@@ -63,7 +64,7 @@ public class ArticleService {
 
     @Transactional
     public ArticleResponse create(CreateArticleRequest request) {
-        String code = UnitService.normalizeCode(request.code());
+        String code = Codes.normalize(request.code());
         if(articleRepository.existsByCode(code)) {
             throw new DuplicateCodeException("Article", code);
         }
@@ -116,7 +117,7 @@ public class ArticleService {
     }
 
     private ArticleCategory findActiveCategory(String code) {
-        String normalized = UnitService.normalizeCode(code);
+        String normalized = Codes.normalize(code);
         ArticleCategory category = articleCategoryRepository.findByCode(normalized)
                 .orElseThrow(() -> new IllegalArgumentException("Catégorie inconnue : " + normalized));
         if(!category.isActive()) {
@@ -126,7 +127,7 @@ public class ArticleService {
     }
 
     private Unit findUnit(String code) {
-        String normalized = UnitService.normalizeCode(code);
+        String normalized = Codes.normalize(code);
         return unitRepository.findByCode(normalized)
                 .orElseThrow(() -> new IllegalArgumentException("Unité inconnue : " + normalized));
     }

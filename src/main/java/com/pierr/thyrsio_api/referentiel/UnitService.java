@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.referentiel;
 
+import com.pierr.thyrsio_api.common.Codes;
 import com.pierr.thyrsio_api.common.DuplicateCodeException;
 import com.pierr.thyrsio_api.common.ResourceNotFoundException;
 import com.pierr.thyrsio_api.referentiel.dto.CreateUnitRequest;
@@ -37,7 +38,7 @@ public class UnitService {
 
     @Transactional
     public UnitResponse create(CreateUnitRequest request) {
-        String code = normalizeCode(request.code());
+        String code = Codes.normalize(request.code());
         if(unitRepository.existsByCode(code))
             throw new DuplicateCodeException("Unité", code);
         Unit unit = new Unit(code, request.label().trim(), request.decimals());
@@ -56,10 +57,5 @@ public class UnitService {
     private Unit findUnit(UUID id) {
         return unitRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Unité", id));
-    }
-
-    /** "  kg " devient "KG" : un code n'existe qu'en une seule version. */
-    static String normalizeCode(String code) {
-        return code.trim().toUpperCase(Locale.ROOT);
     }
 }
