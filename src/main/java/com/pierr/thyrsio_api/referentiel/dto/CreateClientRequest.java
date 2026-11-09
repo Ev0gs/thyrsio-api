@@ -19,7 +19,7 @@ public record CreateClientRequest(
         @Size(max = 20) String vatNumber,
         @Size(max = 20) String exciseNumber,
         Incoterm defaultIncoterm,
-        boolean gs1LabelingRequired,
+        Boolean gs1LabelingRequired,
         @Size(max = 2000) String notes
 ) implements ClientFields {
 }

@@ -10,6 +10,6 @@ public record CreateInventoryRequest(
         @NotBlank @Size(max = 100) String label,
         @PastOrPresent Instant countedAt,   // facultatif : maintenant par défaut
         @Size(max = 1000) String notes,
-        boolean prefill                     // true : une ligne par stock non nul
+        Boolean prefill                     // true : une ligne par stock non nul
 ) {
 }

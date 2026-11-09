@@ -16,6 +16,6 @@ public interface ClientFields {
     String vatNumber();
     String exciseNumber();
     Incoterm defaultIncoterm();
-    boolean gs1LabelingRequired();
+    Boolean gs1LabelingRequired();
     String notes();
 }

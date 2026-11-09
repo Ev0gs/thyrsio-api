@@ -15,6 +15,10 @@ public record DeliveryAddressRequest(
         String countryCode,
         @Size(max = 30) String phone,
         @Size(max = 1000) String deliveryInstructions,
-        boolean defaultAddress
+        Boolean defaultAddress   // absent = false
 ) {
+        /** Vrai seulement si defaultAddress vaut explicitement true. */
+        public boolean wantsDefault() {
+                return Boolean.TRUE.equals(defaultAddress);
+        }
 }

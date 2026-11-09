@@ -57,7 +57,7 @@ public class InventoryService {
                 request.countedAt() != null ? request.countedAt() : Instant.now(),
                 blankToNull(request.notes()),
                 userId);
-        if (request.prefill()) {
+        if (Boolean.TRUE.equals(request.prefill())) {
             for (StockBalance balance : balanceRepository.findByQuantityGreaterThan(BigDecimal.ZERO)) {
                 inventory.addLine(balance.getArticleId(), balance.getLot());
             }

@@ -101,7 +101,7 @@ public class ClientService {
         client.setVatNumber(normalizeVatNumber(fields.vatNumber()));
         client.setExciseNumber(compactUpper(fields.exciseNumber()));
         client.setDefaultIncoterm(fields.defaultIncoterm());
-        client.setGs1LabelingRequired(fields.gs1LabelingRequired());
+        client.setGs1LabelingRequired(Boolean.TRUE.equals(fields.gs1LabelingRequired()));
         client.setNotes(blankToNull(fields.notes()));
     }
 

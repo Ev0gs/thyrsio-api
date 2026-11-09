@@ -40,7 +40,7 @@ public class ClientDeliveryAddressService {
     @Transactional
     public DeliveryAddressResponse create(UUID clientId, DeliveryAddressRequest request) {
         // D'abord l'UPDATE groupé : il vide le cache JPA, donc on charge le client après
-        if (request.defaultAddress()) {
+        if (request.wantsDefault()) {
             addressRepository.clearDefault(clientId);
         }
         Client client = findClient(clientId);
@@ -51,7 +51,7 @@ public class ClientDeliveryAddressService {
         ClientDeliveryAddress address = new ClientDeliveryAddress(client);
         applyFields(address, request);
         // La première adresse d'un client devient son adresse par défaut
-        address.setDefaultAddress(request.defaultAddress()
+        address.setDefaultAddress(request.wantsDefault()
                 || !addressRepository.existsByClientIdAndDefaultAddressTrue(clientId));
         return DeliveryAddressResponse.from(addressRepository.save(address));
     }
@@ -59,16 +59,16 @@ public class ClientDeliveryAddressService {
     /** Remplacement complet (PUT). defaultAddress=true retire le statut de l'ancienne adresse par défaut. */
     @Transactional
     public DeliveryAddressResponse update(UUID clientId, UUID addressId, DeliveryAddressRequest request) {
-        if (request.defaultAddress()) {
+        if (request.wantsDefault()) {
             addressRepository.clearDefault(clientId);
         }
         // Si l'adresse est introuvable, l'exception annule toute la transaction, clearDefault compris
         ClientDeliveryAddress address = findAddress(clientId, addressId);
-        if (request.defaultAddress() && !address.isActive()) {
+        if (request.wantsDefault() && !address.isActive()) {
             throw new IllegalArgumentException("Une adresse archivée ne peut pas être l'adresse par défaut");
         }
         applyFields(address, request);
-        address.setDefaultAddress(request.defaultAddress());
+        address.setDefaultAddress(request.wantsDefault());
         return DeliveryAddressResponse.from(address);
     }
 
