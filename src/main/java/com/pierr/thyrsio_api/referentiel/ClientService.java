@@ -21,10 +21,6 @@ public class ClientService {
 
     private static final String DEFAULT_LANGUAGE = "fr";
 
-    // Listes ISO fournies par Java. copyOf tolère les doublons, contrairement à Set.of.
-    private static final Set<String> COUNTRIES = Set.copyOf(Arrays.asList(Locale.getISOCountries()));
-    private static final Set<String> LANGUAGES = Set.copyOf(Arrays.asList(Locale.getISOLanguages()));
-
     // TVA intracommunautaire : préfixe pays (FR, DE, EL pour la Grèce...) puis 2 à 12 caractères
     private static final Pattern VAT_NUMBER = Pattern.compile("^[A-Z]{2}[A-Z0-9]{2,12}$");
 
@@ -94,7 +90,7 @@ public class ClientService {
     /** Une seule méthode pour la création et la modification, grâce à l'interface ClientFields. */
     private static void applyFields(Client client, ClientFields fields) {
         client.setName(fields.name().trim());
-        client.setCountryCode(normalizeCountry(fields.countryCode()));
+        client.setCountryCode(IsoCodes.country(fields.countryCode()));
         client.setLanguage(normalizeLanguage(fields.language()));
         client.setAddressLine1(blankToNull(fields.addressLine1()));
         client.setAddressLine2(blankToNull(fields.addressLine2()));
@@ -109,23 +105,8 @@ public class ClientService {
         client.setNotes(blankToNull(fields.notes()));
     }
 
-    private static String normalizeCountry(String value) {
-        String code = value.trim().toUpperCase(Locale.ROOT);
-        if (!COUNTRIES.contains(code)) {
-            throw new IllegalArgumentException("Code pays inconnu : " + code);
-        }
-        return code;
-    }
-
     private static String normalizeLanguage(String value) {
-        if (value == null || value.isBlank()) {
-            return DEFAULT_LANGUAGE;
-        }
-        String code = value.trim().toLowerCase(Locale.ROOT);
-        if (!LANGUAGES.contains(code)) {
-            throw new IllegalArgumentException("Code langue inconnu : " + code);
-        }
-        return code;
+        return (value == null || value.isBlank()) ? DEFAULT_LANGUAGE : IsoCodes.language(value);
     }
 
     private static String normalizeVatNumber(String value) {
