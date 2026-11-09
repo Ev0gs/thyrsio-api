@@ -9,6 +9,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 
+import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -27,4 +30,10 @@ public interface StockBalanceRepository extends JpaRepository<StockBalance, UUID
     @Override
     @EntityGraph(attributePaths = "lot")
     Page<StockBalance> findAll(Specification<StockBalance> spec, Pageable pageable);
+
+    // Stock théorique des lignes d'inventaire, en une requête
+    List<StockBalance> findByArticleIdIn(Collection<UUID> articleIds);
+
+    // Pré-remplissage : un solde non nul = une ligne à compter
+    List<StockBalance> findByQuantityGreaterThan(BigDecimal quantity);
 }

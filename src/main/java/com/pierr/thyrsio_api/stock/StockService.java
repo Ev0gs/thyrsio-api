@@ -85,6 +85,29 @@ public class StockService {
         return movementRepository.save(movement);
     }
 
+    /** Résultat d'un alignement d'inventaire : ce qu'il y avait, et l'écart appliqué. */
+    record InventoryAdjustment(BigDecimal expected, BigDecimal delta) {
+    }
+
+    /**
+     * Amène le stock d'un article (et d'un lot) à la quantité comptée, avec un mouvement INVENTORY pour l'écart.
+     * Package-private : appelé seulement par InventoryService, dans sa transaction.
+     * Pas de refus sur un article archivé : l'inventaire constate la réalité.
+     */
+    InventoryAdjustment adjustTo(ArticleInfo article, Lot lot, BigDecimal countedQuantity,
+                                 Instant occurredAt, String reference, UUID userId) {
+        StockBalance balance = lockBalance(article.id(), lot);
+        BigDecimal expected = balance.getQuantity();
+        BigDecimal delta = countedQuantity.subtract(expected);
+        if (delta.signum() != 0) {
+            balance.apply(delta);
+            balanceRepository.save(balance);
+            movementRepository.save(new StockMovement(
+                    article.id(), lot, MovementType.INVENTORY, delta, occurredAt, reference, null, userId));
+        }
+        return new InventoryAdjustment(expected, delta);
+    }
+
     // ========== Lecture ==========
 
     @Transactional(readOnly = true)
@@ -118,7 +141,8 @@ public class StockService {
 
     // ========== Méthodes utilitaires ==========
 
-    private Lot resolveLot(ArticleInfo article, UUID lotId) {
+    /** Package-private : réutilisé par InventoryService. */
+    Lot resolveLot(ArticleInfo article, UUID lotId) {
         if (!article.lotTracked()) {
             if (lotId != null) {
                 throw new IllegalArgumentException(
@@ -146,7 +170,8 @@ public class StockService {
         return existing.orElseGet(() -> new StockBalance(articleId, lot));
     }
 
-    private static void checkDecimals(BigDecimal quantity, ArticleInfo article) {
+    /** Package-private : réutilisé par InventoryService. */
+    static void checkDecimals(BigDecimal quantity, ArticleInfo article) {
         if (quantity.stripTrailingZeros().scale() > article.unitDecimals()) {
             throw new IllegalArgumentException("Trop de décimales pour l'unité " + article.unitCode()
                     + " : " + article.unitDecimals() + " au maximum");
