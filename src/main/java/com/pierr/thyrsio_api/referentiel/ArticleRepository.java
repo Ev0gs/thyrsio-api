@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 public interface ArticleRepository extends JpaRepository<Article, UUID>, JpaSpecificationExecutor<Article> {
@@ -17,4 +19,8 @@ public interface ArticleRepository extends JpaRepository<Article, UUID>, JpaSpec
     @Override
     @EntityGraph(attributePaths = {"category", "unit", "mainSupplier"})
     Page<Article> findAll(Specification<Article> spec, Pageable pageable);
+
+    // Pour ArticleLookup.findAllById : unité et catégorie chargées dans la même requête
+    @EntityGraph(attributePaths = {"category", "unit"})
+    List<Article> findByIdIn(Collection<UUID> ids);
 }
