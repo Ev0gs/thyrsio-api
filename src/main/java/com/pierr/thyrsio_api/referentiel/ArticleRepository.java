@@ -6,6 +6,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
@@ -23,4 +25,8 @@ public interface ArticleRepository extends JpaRepository<Article, UUID>, JpaSpec
     // Pour ArticleLookup.findAllById : unité et catégorie chargées dans la même requête
     @EntityGraph(attributePaths = {"category", "unit"})
     List<Article> findByIdIn(Collection<UUID> ids);
+
+    // Seulement les ids : inutile de charger des articles entiers pour cette vérification
+    @Query("select a.id from Article a where a.category.id = :categoryId")
+    List<UUID> findIdsByCategoryId(@Param("categoryId") UUID categoryId);
 }

@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.referentiel;
 
+import com.pierr.thyrsio_api.common.BusinessRuleException;
 import com.pierr.thyrsio_api.common.Codes;
 import com.pierr.thyrsio_api.common.DuplicateCodeException;
 import com.pierr.thyrsio_api.common.ResourceNotFoundException;
@@ -24,12 +25,18 @@ public class ArticleService {
     private final ArticleCategoryRepository articleCategoryRepository;
     private final UnitRepository unitRepository;
     private final SupplierRepository supplierRepository;
+    private final ArticleStockUsage stockUsage;
 
-    public ArticleService(ArticleRepository articleRepository, ArticleCategoryRepository articleCategoryRepository, UnitRepository unitRepository, SupplierRepository supplierRepository) {
+    public ArticleService(ArticleRepository articleRepository,
+                          ArticleCategoryRepository articleCategoryRepository,
+                          UnitRepository unitRepository,
+                          SupplierRepository supplierRepository,
+                          ArticleStockUsage stockUsage) {
         this.articleRepository = articleRepository;
         this.articleCategoryRepository = articleCategoryRepository;
         this.unitRepository = unitRepository;
         this.supplierRepository = supplierRepository;
+        this.stockUsage = stockUsage;
     }
 
     @Transactional(readOnly = true)
@@ -91,8 +98,17 @@ public class ArticleService {
     @Transactional
     public ArticleResponse update(UUID id, UpdateArticleRequest request) {
         Article article = findArticle(id);
+        ArticleCategory newCategory = findActiveCategory(request.categoryCode());
+
+        // Seul le passage "suivi par lot" <-> "non suivi" est dangereux : BOUCHON -> CAPSULE reste permis
+        boolean lotTrackingChanges = newCategory.isLotTracked() != article.getCategory().isLotTracked();
+        if (lotTrackingChanges && stockUsage.isUsedInStock(List.of(article.getId()))) {
+            throw new BusinessRuleException("L'article " + article.getCode()
+                    + " a déjà des lots ou du stock : sa catégorie ne peut pas changer de mode de suivi par lot");
+        }
+
         article.setLabel(request.label().trim());
-        article.setCategory(findActiveCategory(request.categoryCode()));
+        article.setCategory(newCategory);
         article.setMainSupplier(findActiveSupplierOrNull(request.mainSupplierId()));
         article.setSupplierReference(blankToNull(request.supplierReference()));
         article.setAlertThreshold(checkDecimals(request.alertThreshold(), article.getUnit()));
