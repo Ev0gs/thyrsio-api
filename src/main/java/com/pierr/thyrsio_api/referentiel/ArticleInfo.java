@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.referentiel;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -10,9 +11,12 @@ public record ArticleInfo(
         UUID id,
         String code,
         String label,
+        String categoryCode,
+        String categoryLabel,
         String unitCode,
         int unitDecimals,
         boolean lotTracked,
+        BigDecimal alertThreshold,  // null : pas de seuil
         boolean active
 ) {
 }

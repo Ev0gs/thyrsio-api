@@ -2,6 +2,7 @@ package com.pierr.thyrsio_api.referentiel;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,6 +22,10 @@ public interface ArticleRepository extends JpaRepository<Article, UUID>, JpaSpec
     @Override
     @EntityGraph(attributePaths = {"category", "unit", "mainSupplier"})
     Page<Article> findAll(Specification<Article> spec, Pageable pageable);
+    
+    @Override
+    @EntityGraph(attributePaths = {"category", "unit"})
+    List<Article> findAll(Specification<Article> spec, Sort sort);
 
     // Pour ArticleLookup.findAllById : unité et catégorie chargées dans la même requête
     @EntityGraph(attributePaths = {"category", "unit"})

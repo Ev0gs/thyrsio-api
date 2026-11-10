@@ -4,6 +4,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.pierr.thyrsio_api.ApiIntegrationTest;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -206,6 +207,26 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
 
         postJson("/api/stock/inventories/" + inventory + "/lines", line).andExpect(status().isCreated());
         postJson("/api/stock/inventories/" + inventory + "/lines", line).andExpect(status().isConflict());
+    }
+
+    @Test
+    void overview_sums_lots_and_flags_articles_below_threshold() throws Exception {
+        // Seuil de 5000, stock réparti sur deux lots : 1200 + 3000 = 4200 → sous le seuil
+        String article = JsonPath.read(body(postJson("/api/referentiel/articles", """
+                {"code": "%s", "label": "Bouchon vue d'ensemble", "categoryCode": "BOUCHON", "alertThreshold": 5000}
+                """.formatted(unique("BOUCHON"))).andExpect(status().isCreated())), "$.id");
+        move(article, createLot(article, "L-A"), "RECEPTION", "1200").andExpect(status().isCreated());
+        move(article, createLot(article, "L-B"), "RECEPTION", "3000").andExpect(status().isCreated());
+        String empty = createArticle("ETIQUETTE");  // jamais de stock → rupture
+
+        String json = body(getAsUser("/api/stock/overview").andExpect(status().isOk()));
+
+        String bouchon = "$[?(@.articleId == '" + article + "')]";
+        assertThat(decimal(json, bouchon + ".quantity[0]")).isEqualByComparingTo("4200");
+        assertThat(JsonPath.<List<Integer>>read(json, bouchon + ".lotsInStock")).containsExactly(2);
+        assertThat(JsonPath.<List<String>>read(json, bouchon + ".status")).containsExactly("BELOW_THRESHOLD");
+        assertThat(JsonPath.<List<String>>read(json, "$[?(@.articleId == '" + empty + "')].status"))
+                .containsExactly("OUT_OF_STOCK");
     }
 
     // ==================== Méthodes utilitaires ====================

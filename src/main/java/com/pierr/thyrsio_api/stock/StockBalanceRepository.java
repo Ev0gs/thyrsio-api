@@ -4,10 +4,8 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.*;
+import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.util.Collection;
@@ -36,4 +34,16 @@ public interface StockBalanceRepository extends JpaRepository<StockBalance, UUID
 
     // Pré-remplissage : un solde non nul = une ligne à compter
     List<StockBalance> findByQuantityGreaterThan(BigDecimal quantity);
+
+    /**
+     * Le calcul est fait par la base (SUM ... GROUP BY) : une seule ligne par article remonte.
+     * count(b.lot) ne compte que les soldes qui ont un lot.
+     */
+    @Query("""
+            select new com.pierr.thyrsio_api.stock.ArticleStockTotal(b.articleId, sum(b.quantity), count(b.lot))
+              from StockBalance b
+             where b.articleId in :articleIds and b.quantity > 0
+             group by b.articleId
+            """)
+    List<ArticleStockTotal> totalsByArticle(@Param("articleIds") Collection<UUID> articleIds);
 }
