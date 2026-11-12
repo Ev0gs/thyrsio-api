@@ -16,6 +16,11 @@ public class Supplier {
     @Column(nullable = false)
     private String name;
 
+    // Matières sèches ou vin en vrac : décide dans quels écrans le fournisseur est proposé
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private SupplierKind kind = SupplierKind.DRY_GOODS;
+
     // Facultatifs : on ne connaît pas toujours toutes les coordonnées d'un fournisseur
     private String email;
 
@@ -49,6 +54,14 @@ public class Supplier {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public SupplierKind getKind() {
+        return kind;
+    }
+
+    public void setKind(SupplierKind kind) {
+        this.kind = kind;
     }
 
     public String getEmail() {

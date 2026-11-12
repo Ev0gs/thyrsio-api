@@ -25,11 +25,14 @@ public class SupplierController {
         this.supplierService = supplierService;
     }
 
-    @Operation(summary = "Lister les fournisseurs (paginé)", description = "Les fournisseurs archivés sont exclus, sauf avec includeArchived=true.")
+    @Operation(summary = "Lister les fournisseurs (paginé)",
+            description = "Les fournisseurs archivés sont exclus, sauf avec includeArchived=true. "
+                    + "kind=DRY_GOODS ou kind=WINE pour ne garder qu'un type de fournisseur.")
     @GetMapping
     public Page<SupplierResponse> list(@RequestParam(defaultValue = "false") boolean includeArchived,
+                                       @RequestParam(required = false) SupplierKind kind,
                                        @ParameterObject Pageable pageable) {
-        return supplierService.list(includeArchived, pageable);
+        return supplierService.list(includeArchived, kind, pageable);
     }
 
     @Operation(summary = "Récupérer un fournisseur")
@@ -40,7 +43,7 @@ public class SupplierController {
         return supplierService.get(id);
     }
 
-    @Operation(summary = "Créer un fournisseur")
+    @Operation(summary = "Créer un fournisseur", description = "kind absent : fournisseur de matières sèches (DRY_GOODS).")
     @ApiResponse(responseCode = "201", description = "Fournisseur créé")
     @ApiResponse(responseCode = "400", description = "Données invalides")
     @PostMapping
@@ -49,7 +52,8 @@ public class SupplierController {
         return supplierService.create(request);
     }
 
-    @Operation(summary = "Modifier un fournisseur", description = "Remplace la fiche entière : un champ facultatif vide efface la valeur.")
+    @Operation(summary = "Modifier un fournisseur",
+            description = "Remplace la fiche entière : un champ facultatif vide efface la valeur. kind absent : inchangé.")
     @ApiResponse(responseCode = "200", description = "Fournisseur modifié")
     @ApiResponse(responseCode = "400", description = "Données invalides")
     @ApiResponse(responseCode = "404", description = "Fournisseur introuvable")

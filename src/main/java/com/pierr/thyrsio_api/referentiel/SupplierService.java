@@ -19,11 +19,19 @@ public class SupplierService {
         this.supplierRepository = supplierRepository;
     }
 
+    /** kind null : tous les fournisseurs, quel que soit ce qu'ils fournissent. */
     @Transactional(readOnly = true)
-    public Page<SupplierResponse> list(boolean includeArchived, Pageable pageable) {
-        Page<Supplier> page = includeArchived
-                ? supplierRepository.findAll(pageable)
-                : supplierRepository.findByActiveTrue(pageable);
+    public Page<SupplierResponse> list(boolean includeArchived, SupplierKind kind, Pageable pageable) {
+        Page<Supplier> page;
+        if (kind == null) {
+            page = includeArchived
+                    ? supplierRepository.findAll(pageable)
+                    : supplierRepository.findByActiveTrue(pageable);
+        } else {
+            page = includeArchived
+                    ? supplierRepository.findByKind(kind, pageable)
+                    : supplierRepository.findByActiveTrueAndKind(kind, pageable);
+        }
         return page.map(SupplierResponse::from);
     }
 
@@ -35,15 +43,22 @@ public class SupplierService {
     @Transactional
     public SupplierResponse create(SupplierRequest request) {
         Supplier supplier = new Supplier(request.name().trim());
+        supplier.setKind(request.kind() != null ? request.kind() : SupplierKind.DRY_GOODS);
         applyOptionalFields(supplier, request);
         return SupplierResponse.from(supplierRepository.save(supplier));
     }
 
-    /** Modification complète (PUT) : un champ facultatif vide efface la valeur existante. */
+    /**
+     * Modification complète (PUT) : un champ facultatif vide efface la valeur existante.
+     * Exception : kind absent garde la valeur actuelle (on ne transforme pas un fournisseur de vin par oubli).
+     */
     @Transactional
     public SupplierResponse update(UUID id, SupplierRequest request) {
         Supplier supplier = findSupplier(id);
         supplier.setName(request.name().trim());
+        if (request.kind() != null) {
+            supplier.setKind(request.kind());
+        }
         applyOptionalFields(supplier, request);
         return SupplierResponse.from(supplier);
     }
