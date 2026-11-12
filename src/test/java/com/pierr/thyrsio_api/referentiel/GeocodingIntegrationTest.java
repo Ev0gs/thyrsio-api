@@ -5,6 +5,7 @@ import com.pierr.thyrsio_api.ApiIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -30,6 +31,8 @@ class GeocodingIntegrationTest extends ApiIntegrationTest {
     private SupplierRepository supplierRepository;
     @Autowired
     private PlatformTransactionManager transactionManager;
+    @Autowired
+    private JdbcTemplate jdbc;
 
     private final List<GeocodingRequest> searched = new ArrayList<>();
     private GeocodingJob job;
@@ -91,6 +94,26 @@ class GeocodingIntegrationTest extends ApiIntegrationTest {
         getAsUser("/api/referentiel/clients/" + id)
                 .andExpect(jsonPath("$.location.latitude").value(45.764))
                 .andExpect(jsonPath("$.location.approximate").value(true));
+    }
+
+    /** Les données de démo et les reprises sont insérées en SQL : elles n'ont pas encore de requête enregistrée. */
+    @Test
+    void a_client_inserted_outside_the_application_is_located_too() throws Exception {
+        String code = unique("SQL").toUpperCase();
+        jdbc.update("INSERT INTO clients (code, name, country_code, address_line1, postal_code, city) "
+                + "VALUES (?, 'Repris en SQL', 'FR', '1 cours de l''Intendance', '33000', 'Bordeaux')", code);
+        String id = jdbc.queryForObject("SELECT id::text FROM clients WHERE code = ?", String.class, code);
+
+        job.runOnce();
+
+        getAsUser("/api/referentiel/clients/" + id)
+                .andExpect(jsonPath("$.locationStatus").value("LOCATED"))
+                .andExpect(jsonPath("$.location.latitude").value(44.8378));
+        // Trouvé une fois pour toutes : le passage suivant ne le cherche plus
+        long searches = searched.stream().filter(request -> "1 cours de l'Intendance".equals(request.street())).count();
+        job.runOnce();
+        assertThat(searched.stream().filter(request -> "1 cours de l'Intendance".equals(request.street())).count())
+                .isEqualTo(searches).isEqualTo(1);
     }
 
     @Test

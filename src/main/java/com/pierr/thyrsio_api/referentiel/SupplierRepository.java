@@ -24,6 +24,7 @@ public interface SupplierRepository extends JpaRepository<Supplier, UUID> {
 
     /**
      * Le résultat du géocodage, enregistré seulement si l'adresse n'a pas changé pendant la recherche.
+     * Une ligne jamais enregistrée par l'application (données de démo, reprise) n'a pas encore de requête : null.
      * Un UPDATE ciblé : il ne touche à aucun autre champ, même si l'utilisateur modifie la fiche en même temps.
      */
     @Modifying
@@ -36,8 +37,7 @@ public interface SupplierRepository extends JpaRepository<Supplier, UUID> {
                    s.geocoding.geocodedAt = :at
              where s.id = :id
                and s.geocoding.geocodedAt is null
-               and (s.geocoding.geocodingQuery = :query
-                    or (s.geocoding.geocodingQuery is null and :query is null))
+               and (s.geocoding.geocodingQuery is null or s.geocoding.geocodingQuery = :query)
             """)
     int recordLocation(@Param("id") UUID id, @Param("query") String query, @Param("latitude") Double latitude,
                        @Param("longitude") Double longitude, @Param("approximate") Boolean approximate,
