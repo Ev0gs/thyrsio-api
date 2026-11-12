@@ -222,7 +222,9 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
         String json = body(getAsUser("/api/stock/overview").andExpect(status().isOk()));
 
         String bouchon = "$[?(@.articleId == '" + article + "')]";
-        assertThat(decimal(json, bouchon + ".quantity[0]")).isEqualByComparingTo("4200");
+        // Un filtre [?(...)] renvoie toujours une liste, même pour une seule ligne
+        List<Object> quantities = JsonPath.read(json, bouchon + ".quantity");
+        assertThat(new java.math.BigDecimal(quantities.getFirst().toString())).isEqualByComparingTo("4200");
         assertThat(JsonPath.<List<Integer>>read(json, bouchon + ".lotsInStock")).containsExactly(2);
         assertThat(JsonPath.<List<String>>read(json, bouchon + ".status")).containsExactly("BELOW_THRESHOLD");
         assertThat(JsonPath.<List<String>>read(json, "$[?(@.articleId == '" + empty + "')].status"))
