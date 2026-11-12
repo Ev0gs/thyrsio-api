@@ -24,9 +24,11 @@ public class StockOverviewController {
     @Operation(summary = "Vue d'ensemble du stock : une ligne par article",
             description = "Stock total (tous lots), seuil d'alerte, état et date du dernier mouvement. "
                     + "Non paginé : prévu pour quelques centaines d'articles, filtrés par l'écran. "
-                    + "Le détail par lot : GET /api/stock/balances?articleId=...")
+                    + "Le détail par lot : GET /api/stock/balances?articleId=... "
+                    + "Matières sèches par défaut ; finishedGoods=true pour les produits finis.")
     @GetMapping
-    public List<StockOverviewRow> overview(@RequestParam(defaultValue = "false") boolean includeArchived) {
-        return overviewService.overview(includeArchived);
+    public List<StockOverviewRow> overview(@RequestParam(defaultValue = "false") boolean includeArchived,
+                                           @RequestParam(defaultValue = "false") boolean finishedGoods) {
+        return overviewService.overview(includeArchived, finishedGoods);
     }
 }

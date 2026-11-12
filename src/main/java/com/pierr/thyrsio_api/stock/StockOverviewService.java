@@ -29,10 +29,15 @@ public class StockOverviewService {
         this.movementRepository = movementRepository;
     }
 
-    /** Une ligne par article, y compris ceux qui n'ont jamais eu de stock (ruptures). 3 requêtes au total. */
+    /**
+     * Une ligne par article, y compris ceux qui n'ont jamais eu de stock (ruptures). 3 requêtes au total.
+     * finishedGoods : false, les matières sèches ; true, les produits finis (les bouteilles des mises).
+     */
     @Transactional(readOnly = true)
-    public List<StockOverviewRow> overview(boolean includeArchived) {
-        List<ArticleInfo> articles = articleLookup.findAll(includeArchived);
+    public List<StockOverviewRow> overview(boolean includeArchived, boolean finishedGoods) {
+        List<ArticleInfo> articles = articleLookup.findAll(includeArchived).stream()
+                .filter(article -> article.finishedGood() == finishedGoods)
+                .toList();
         if (articles.isEmpty()) {
             return List.of();
         }

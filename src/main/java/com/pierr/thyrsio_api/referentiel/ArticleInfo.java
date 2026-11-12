@@ -19,4 +19,11 @@ public record ArticleInfo(
         BigDecimal alertThreshold,  // null : pas de seuil
         boolean active
 ) {
+    /** La catégorie des bouteilles produites par les mises (créée par la migration V14). */
+    public static final String FINISHED_GOODS_CATEGORY = "PRODUIT_FINI";
+
+    /** Un produit fini (une bouteille de vin), par opposition à une matière sèche. */
+    public boolean finishedGood() {
+        return FINISHED_GOODS_CATEGORY.equals(categoryCode);
+    }
 }
