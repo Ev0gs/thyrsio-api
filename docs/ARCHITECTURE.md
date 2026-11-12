@@ -290,14 +290,14 @@ Ces sujets sont hors du périmètre initial, mais l'architecture conserve dès m
 
 La construction suit l'ordre des dépendances : chaque phase est utilisable seule et sert de base à la suivante.
 
-1. **Référentiel et Stock** *(en cours)* : unités, catégories, fournisseurs, articles, **clients**, lots, mouvements, soldes, inventaire.
+1. **Référentiel et Stock** *(fait)* : unités, catégories, fournisseurs, articles, **clients**, lots, mouvements, soldes, inventaire.
    - Le client peut déjà suivre ses stocks de matières sèches.
-2. **Cuverie et produits finis** : cuves, réceptions et transferts de vrac, cuvées, produits finis **avec habillage**, nomenclatures versionnées.
+2. **Cuverie et produits finis** *(fait : cuves, lots de vin, réceptions et transferts, stock de produits finis)* : cuves, réceptions et transferts de vrac, cuvées, produits finis **avec habillage**, nomenclatures versionnées.
    - Prérequis : nombre et contenance des cuves.
-3. **Commandes clients et mises en bouteille** : commandes et lignes, prestataires, séances et lignes de mise, affectations, numéros de lot, clôture avec le réalisé, planning.
+3. **Commandes clients et mises en bouteille** *(fait : commandes, couverture par le stock et les mises, réservations, planning, clôture)* : commandes et lignes, prestataires, séances et lignes de mise, affectations, numéros de lot, clôture avec le réalisé, planning.
    - C'est la phase qui apporte le plus de valeur.
    - Prérequis : règle de numérotation des lots, prestataires, taux de perte habituels.
-4. **Expéditions** : chargements, colisage, régime fiscal, bon de livraison et liste de colisage.
+4. **Expéditions** *(fait : chargements, sortie du stock au départ, bon de livraison ; reste la liste de colisage et le régime fiscal)* : chargements, colisage, régime fiscal, bon de livraison et liste de colisage.
    - Prérequis : statut fiscal du client et pratiques de son transitaire.
 5. **Codification GS1** : GTIN saisis ou générés, registre, SSCC des palettes.
    - Peut être avancée si une commande l'exige rapidement.
@@ -305,11 +305,23 @@ La construction suit l'ordre des dépendances : chaque phase est utilisable seul
 7. **Traçabilité, documents et tableau de bord** : recherches de lots jusqu'au client, PDF, imports et exports.
 8. **Plus tard, selon les besoins** : réglementaire (DRM, CRD), transmission à GAMMA2, intégration avec les logiciels de vente, instance mutualisée.
 
+### Reste à faire (point du 12 novembre 2026)
+
+Le flux physique est complet, de l'achat du vin à l'expédition. Ce qui manque, dans l'ordre conseillé :
+
+1. **Paramètres de la société** : raison sociale, adresse, SIRET, TVA intracommunautaire, n° d'accise d'entrepositaire, logo, coordonnées bancaires. Nécessaires au bon de livraison, qui ne porte pas encore l'expéditeur, puis aux factures.
+2. **Facturation** : factures à partir des expéditions parties, numérotation continue sans trou, TVA (France, exonération intra-UE ou export avec la mention légale), avoirs, échéances et suivi des paiements, PDF. À cadrer d'abord : le client garde-t-il son logiciel de facturation (on exporterait alors les expéditions) ?
+3. **Achats** (phase 6) : commandes fournisseurs, réceptions partielles qui créent les mouvements, suggestions de réapprovisionnement depuis les manquants des mises.
+4. **Réglementaire** : DAE et DSA par expédition (GAMMA2), DRM mensuelle, registre de cave. Les données sont déjà là (mouvements, lots, n° d'accise des clients) ; c'est surtout des exports au format de la douane.
+5. **Plus tard** : tarifs par client, liste de colisage et documents d'export, fiche de traçabilité d'un lot (phase 7), codification GS1 (phase 5), rôles fins, mise en production (CI, sauvegardes).
+
 Chaque phase suit la méthode déjà en place : migration Flyway, entités, repository, service, DTO, controller, documentation Swagger, puis tests d'intégration.
 
 ## Questions ouvertes
 
 Ces réponses sont à obtenir auprès du client avant la phase concernée.
+
+- [ ] **Facturation** : faut-il facturer dans Thyrsio, ou exporter les expéditions vers le logiciel de facturation actuel du client ?
 
 - [ ] **Numéros de lot** : quelle règle, et un lot est-il propre à une commande ou à une production qui peut servir plusieurs commandes ? (avant la phase 3)
 - [ ] **Gencodes** : préfixe GS1 du négociant, codes fournis par ses clients, ou les deux ? Gencodes déjà attribués à reprendre ? (avant la phase 5)
