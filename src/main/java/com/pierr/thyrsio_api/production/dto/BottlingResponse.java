@@ -33,6 +33,8 @@ public record BottlingResponse(
         String wineDescription,
         String notes,
         List<MaterialLine> materials,
+        // Les commandes servies ; le reste des bouteilles va au stock
+        List<AllocationLine> allocations,
         int shortageCount,
         boolean alert,
         // --- Le réel ---

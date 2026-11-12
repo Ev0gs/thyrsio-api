@@ -11,6 +11,7 @@ import java.util.UUID;
 /**
  * Planifier une mise (POST) ou modifier une mise planifiée (PUT : la liste des matières est remplacée).
  * ON_SITE : sourceTankId obligatoire. AT_PRODUCER : pas de cuve, wineDescription décrit le vin.
+ * allocations : les bouteilles réservées à des lignes de commande ; le reste va au stock.
  */
 public record BottlingRequest(
         @NotNull BottlingLocation location,
@@ -24,6 +25,8 @@ public record BottlingRequest(
         @Size(max = 200) String wineDescription,
         @Size(max = 2000) String notes,
         // null ou vide : pas encore de matières prévues
-        @Size(max = 50) List<@Valid @NotNull MaterialRequest> materials
+        @Size(max = 50) List<@Valid @NotNull MaterialRequest> materials,
+        // Les commandes que cette mise sert : null ou vide, la mise produit pour le stock
+        @Size(max = 50) List<@Valid @NotNull AllocationRequest> allocations
 ) {
 }

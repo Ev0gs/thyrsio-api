@@ -91,6 +91,11 @@ public class Bottling {
     @OneToMany(mappedBy = "bottling", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BottlingConsumption> consumptions = new ArrayList<>();
 
+    // Les commandes servies par cette mise (bouteilles réservées par ligne de commande)
+    @OneToMany(mappedBy = "bottling", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id")
+    private List<BottlingAllocation> allocations = new ArrayList<>();
+
     protected Bottling() {
     }
 
@@ -135,6 +140,23 @@ public class Bottling {
                 material.setPlannedQuantity(quantity);
             } else {
                 materials.add(new BottlingMaterial(this, articleId, quantity));
+            }
+        });
+        touch();
+    }
+
+    /** Remplace les commandes servies, en mettant à jour sur place celles qui restent. */
+    void replaceAllocations(Map<UUID, Integer> bottlesByOrderLine) {
+        requirePlanned();
+        allocations.removeIf(allocation -> !bottlesByOrderLine.containsKey(allocation.getOrderLineId()));
+        Map<UUID, BottlingAllocation> existing = new HashMap<>();
+        allocations.forEach(allocation -> existing.put(allocation.getOrderLineId(), allocation));
+        bottlesByOrderLine.forEach((lineId, bottles) -> {
+            BottlingAllocation allocation = existing.get(lineId);
+            if (allocation != null) {
+                allocation.setQuantity(bottles);
+            } else {
+                allocations.add(new BottlingAllocation(this, lineId, bottles));
             }
         });
         touch();
@@ -236,6 +258,10 @@ public class Bottling {
 
     public List<BottlingConsumption> getConsumptions() {
         return Collections.unmodifiableList(consumptions);
+    }
+
+    public List<BottlingAllocation> getAllocations() {
+        return Collections.unmodifiableList(allocations);
     }
 
     @PrePersist

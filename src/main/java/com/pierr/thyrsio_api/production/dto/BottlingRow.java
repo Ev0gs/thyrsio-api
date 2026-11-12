@@ -6,6 +6,7 @@ import com.pierr.thyrsio_api.production.BottlingStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -35,6 +36,7 @@ public record BottlingRow(
         String wineDescription,
         int shortageCount,
         boolean alert,
-        String lotNumber
+        String lotNumber,
+        List<AllocationLine> allocations
 ) {
 }

@@ -9,6 +9,11 @@ import com.pierr.thyrsio_api.production.BottlingPlanner.MaterialNeed;
 import com.pierr.thyrsio_api.production.dto.*;
 import com.pierr.thyrsio_api.referentiel.ArticleInfo;
 import com.pierr.thyrsio_api.referentiel.ArticleLookup;
+import com.pierr.thyrsio_api.referentiel.ClientInfo;
+import com.pierr.thyrsio_api.referentiel.ClientLookup;
+import com.pierr.thyrsio_api.sales.OrderInfo;
+import com.pierr.thyrsio_api.sales.OrderLookup;
+import com.pierr.thyrsio_api.sales.OrderStatus;
 import com.pierr.thyrsio_api.stock.LotService;
 import com.pierr.thyrsio_api.stock.MovementType;
 import com.pierr.thyrsio_api.stock.StockLookup;
@@ -49,6 +54,9 @@ public class BottlingService {
     private final StockService stockService;
     private final LotService lotService;
     private final CuverieService cuverieService;
+    private final OrderLookup orderLookup;
+    private final ClientLookup clientLookup;
+    private final BottlingAllocationRepository allocationRepository;
     private final int alertDays;
 
     public BottlingService(BottlingRepository bottlingRepository,
@@ -59,6 +67,9 @@ public class BottlingService {
                            StockService stockService,
                            LotService lotService,
                            CuverieService cuverieService,
+                           OrderLookup orderLookup,
+                           ClientLookup clientLookup,
+                           BottlingAllocationRepository allocationRepository,
                            // Combien de jours avant une mise on veut être alerté des manquants
                            @Value("${thyrsio.production.alert-days:10}") int alertDays) {
         this.bottlingRepository = bottlingRepository;
@@ -69,6 +80,9 @@ public class BottlingService {
         this.stockService = stockService;
         this.lotService = lotService;
         this.cuverieService = cuverieService;
+        this.orderLookup = orderLookup;
+        this.clientLookup = clientLookup;
+        this.allocationRepository = allocationRepository;
         this.alertDays = alertDays;
     }
 
@@ -92,6 +106,8 @@ public class BottlingService {
                 .map(Bottling::getSourceTankId).filter(Objects::nonNull).collect(Collectors.toSet()));
         boolean anyPlanned = page.stream().anyMatch(b -> b.getStatus() == BottlingStatus.PLANNED);
         Map<UUID, List<MaterialNeed>> needs = anyPlanned ? planner.plan() : Map.of();
+        Map<UUID, List<AllocationLine>> allocations = allocationViews(
+                allocationRepository.findByBottlingIdIn(page.stream().map(Bottling::getId).toList()));
 
         return page.map(bottling -> {
             ArticleInfo article = articles.get(bottling.getFinishedArticleId());
@@ -105,7 +121,8 @@ public class BottlingService {
                     bottling.getPlannedBottles(), bottling.getProducedBottles(), bottling.getBottleVolumeCl(),
                     bottling.wineNeededHl(), bottling.getSourceTankId(), tank != null ? tank.code() : null,
                     tank != null ? tank.wineLot() : null, bottling.getWineDescription(),
-                    shortages, isAlert(bottling, shortages), bottling.getLotNumber());
+                    shortages, isAlert(bottling, shortages), bottling.getLotNumber(),
+                    allocations.getOrDefault(bottling.getId(), List.of()));
         });
     }
 
@@ -257,6 +274,77 @@ public class BottlingService {
                 request.location() == BottlingLocation.AT_PRODUCER ? blankToNull(request.wineDescription()) : null,
                 blankToNull(request.notes()));
         bottling.replaceMaterials(quantities);
+        bottling.replaceAllocations(checkAllocations(bottling, finished, request));
+    }
+
+    /**
+     * Les commandes servies : chaque ligne porte sur le produit de la mise, attend encore assez de bouteilles
+     * (en tenant compte des autres mises planifiées pour elle), et le total ne dépasse pas la mise.
+     */
+    private Map<UUID, Integer> checkAllocations(Bottling bottling, ArticleInfo finished, BottlingRequest request) {
+        List<AllocationRequest> requested = request.allocations() != null ? request.allocations() : List.of();
+        if (requested.isEmpty()) {
+            return Map.of();
+        }
+        Set<UUID> lineIds = requested.stream().map(AllocationRequest::orderLineId).collect(Collectors.toSet());
+        Map<UUID, OrderInfo.Line> lines = orderLookup.findLines(lineIds);
+        // Ce que les AUTRES mises planifiées réservent déjà à ces lignes
+        Map<UUID, Integer> elsewhere = new HashMap<>();
+        allocationRepository.findForOrderLines(lineIds, BottlingStatus.CANCELLED).stream()
+                .filter(a -> a.getBottling().getStatus() == BottlingStatus.PLANNED)
+                .filter(a -> !a.getBottling().getId().equals(bottling.getId()))
+                .forEach(a -> elsewhere.merge(a.getOrderLineId(), a.getQuantity(), Integer::sum));
+
+        Map<UUID, Integer> bottles = new LinkedHashMap<>();
+        int total = 0;
+        for (AllocationRequest allocation : requested) {
+            OrderInfo.Line line = lines.get(allocation.orderLineId());
+            if (line == null) {
+                throw new IllegalArgumentException("Ligne de commande inconnue : " + allocation.orderLineId());
+            }
+            if (!line.articleId().equals(finished.id())) {
+                throw new IllegalArgumentException("La commande " + line.orderCode()
+                        + " porte sur un autre produit que celui de la mise");
+            }
+            if (line.orderStatus() == OrderStatus.CANCELLED || line.orderStatus() == OrderStatus.SHIPPED) {
+                throw new BusinessRuleException("La commande " + line.orderCode() + " est "
+                        + (line.orderStatus() == OrderStatus.CANCELLED ? "annulée" : "déjà expédiée"));
+            }
+            int available = line.remaining() - elsewhere.getOrDefault(line.id(), 0);
+            if (allocation.quantity() > available) {
+                throw new BusinessRuleException("La commande " + line.orderCode() + " n'attend plus que "
+                        + Math.max(available, 0) + " bouteilles de ce produit (autres mises comprises)");
+            }
+            if (bottles.put(line.id(), allocation.quantity()) != null) {
+                throw new IllegalArgumentException("La commande " + line.orderCode() + " figure deux fois");
+            }
+            total += allocation.quantity();
+        }
+        if (total > request.plannedBottles()) {
+            throw new IllegalArgumentException("Les commandes servies (" + total + " bouteilles) dépassent la mise ("
+                    + request.plannedBottles() + ")");
+        }
+        return bottles;
+    }
+
+    /** Les allocations avec le code de leur commande et le nom du client, regroupées par mise. */
+    private Map<UUID, List<AllocationLine>> allocationViews(Collection<BottlingAllocation> allocations) {
+        if (allocations.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, OrderInfo.Line> lines = orderLookup.findLines(
+                allocations.stream().map(BottlingAllocation::getOrderLineId).collect(Collectors.toSet()));
+        Map<UUID, ClientInfo> clients = clientLookup.findAllById(
+                lines.values().stream().map(OrderInfo.Line::clientId).collect(Collectors.toSet()));
+        return allocations.stream().collect(Collectors.groupingBy(
+                allocation -> allocation.getBottling().getId(),
+                Collectors.mapping(allocation -> {
+                    OrderInfo.Line line = lines.get(allocation.getOrderLineId());
+                    ClientInfo client = line != null ? clients.get(line.clientId()) : null;
+                    return new AllocationLine(allocation.getOrderLineId(), line != null ? line.orderId() : null,
+                            line != null ? line.orderCode() : null, client != null ? client.name() : null,
+                            allocation.getQuantity());
+                }, Collectors.toList())));
     }
 
     private BottlingResponse toResponse(Bottling bottling) {
@@ -311,7 +399,8 @@ public class BottlingService {
                 bottling.getPlannedBottles(), bottling.getBottleVolumeCl(), bottling.wineNeededHl(),
                 bottling.getSourceTankId(), tank != null ? tank.code() : null,
                 tank != null ? tank.volumeHl() : null, tank != null ? tank.wineLot() : null,
-                bottling.getWineDescription(), bottling.getNotes(), materials, shortages,
+                bottling.getWineDescription(), bottling.getNotes(), materials,
+                allocationViews(bottling.getAllocations()).getOrDefault(bottling.getId(), List.of()), shortages,
                 isAlert(bottling, shortages),
                 bottling.getProducedBottles(), bottling.getBrokenBottles(), bottling.getWineUsedHl(),
                 bottling.getLotNumber(), consumptions, bottling.getClosedAt(), bottling.getClosedBy(),
