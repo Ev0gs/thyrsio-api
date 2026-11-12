@@ -17,13 +17,14 @@ public record DeliveryAddressInfo(
         String countryCode,
         String phone,
         String deliveryInstructions,
-        boolean active
+        boolean active,
+        GeoLocation location
 ) {
     static DeliveryAddressInfo from(ClientDeliveryAddress address) {
         return new DeliveryAddressInfo(address.getId(), address.getClient().getId(), address.getLabel(),
                 address.getRecipientName(), address.getAddressLine1(), address.getAddressLine2(),
                 address.getPostalCode(), address.getCity(), address.getCountryCode(), address.getPhone(),
-                address.getDeliveryInstructions(), address.isActive());
+                address.getDeliveryInstructions(), address.isActive(), address.getLocation());
     }
 
     /** L'adresse prête à imprimer, une ligne par élément (destinataire par défaut : le nom du client). */

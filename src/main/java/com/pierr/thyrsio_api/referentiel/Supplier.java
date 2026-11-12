@@ -37,6 +37,10 @@ public class Supplier {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
+    // La position sur la carte, calculée en tâche de fond à partir de l'adresse (GeocodingJob)
+    @Embedded
+    private Geocoding geocoding;
+
     protected Supplier() {
     }
 
@@ -113,8 +117,24 @@ public class Supplier {
         return createdAt;
     }
 
+    /** null tant que l'adresse n'est pas localisée, ou si elle est introuvable. */
+    public GeoLocation getLocation() {
+        return Geocoding.location(geocoding, geocodingRequest());
+    }
+
+    /** L'adresse d'un fournisseur tient en un seul champ : elle est cherchée telle quelle. */
+    GeocodingRequest geocodingRequest() {
+        return GeocodingRequest.freeText(address);
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();
+        geocoding = Geocoding.track(geocoding, geocodingRequest());
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        geocoding = Geocoding.track(geocoding, geocodingRequest());
     }
 }

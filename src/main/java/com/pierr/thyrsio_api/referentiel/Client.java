@@ -48,6 +48,10 @@ public class Client {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
+    // La position sur la carte, calculée en tâche de fond à partir de l'adresse (GeocodingJob)
+    @Embedded
+    private Geocoding geocoding;
+
     protected Client() {
     }
 
@@ -110,8 +114,22 @@ public class Client {
 
     public Instant getCreatedAt() { return createdAt; }
 
+    /** null tant que l'adresse n'est pas localisée, ou si elle est introuvable. */
+    public GeoLocation getLocation() { return Geocoding.location(geocoding, geocodingRequest()); }
+
+    /** L'adresse du siège à chercher sur la carte (null sans ville). */
+    GeocodingRequest geocodingRequest() {
+        return GeocodingRequest.structured(addressLine1, postalCode, city, countryCode);
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = Instant.now();
+        geocoding = Geocoding.track(geocoding, geocodingRequest());
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        geocoding = Geocoding.track(geocoding, geocodingRequest());
     }
 }

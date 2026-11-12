@@ -16,12 +16,13 @@ public record ClientInfo(
         String vatNumber,
         String exciseNumber,
         Incoterm defaultIncoterm,
-        boolean active
+        boolean active,
+        GeoLocation location
 ) {
     static ClientInfo from(Client client) {
         return new ClientInfo(client.getId(), client.getCode(), client.getName(), client.getCountryCode(),
                 client.getLanguage(), client.getAddressLine1(), client.getAddressLine2(), client.getPostalCode(),
                 client.getCity(), client.getVatNumber(), client.getExciseNumber(), client.getDefaultIncoterm(),
-                client.isActive());
+                client.isActive(), client.getLocation());
     }
 }

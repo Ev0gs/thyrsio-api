@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.referentiel.dto;
 
+import com.pierr.thyrsio_api.referentiel.GeoLocation;
 import com.pierr.thyrsio_api.referentiel.ClientDeliveryAddress;
 
 import java.time.Instant;
@@ -19,7 +20,8 @@ public record DeliveryAddressResponse(
         String deliveryInstructions,
         boolean defaultAddress,
         boolean active,
-        Instant createdAt
+        Instant createdAt,
+        GeoLocation location
 ) {
     public static DeliveryAddressResponse from(ClientDeliveryAddress address) {
         return new DeliveryAddressResponse(
@@ -36,7 +38,8 @@ public record DeliveryAddressResponse(
                 address.getDeliveryInstructions(),
                 address.isDefaultAddress(),
                 address.isActive(),
-                address.getCreatedAt()
+                address.getCreatedAt(),
+                address.getLocation()
         );
     }
 }

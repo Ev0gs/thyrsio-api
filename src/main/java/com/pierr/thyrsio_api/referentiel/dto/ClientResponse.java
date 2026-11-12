@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.referentiel.dto;
 
+import com.pierr.thyrsio_api.referentiel.GeoLocation;
 import com.pierr.thyrsio_api.referentiel.Client;
 import com.pierr.thyrsio_api.referentiel.Incoterm;
 
@@ -24,7 +25,8 @@ public record ClientResponse(
         boolean gs1LabelingRequired,
         String notes,
         boolean active,
-        Instant createdAt
+        Instant createdAt,
+        GeoLocation location
 ) {
     public static ClientResponse from(Client client) {
         return new ClientResponse(
@@ -45,7 +47,8 @@ public record ClientResponse(
                 client.isGs1LabelingRequired(),
                 client.getNotes(),
                 client.isActive(),
-                client.getCreatedAt()
+                client.getCreatedAt(),
+                client.getLocation()
         );
     }
 }

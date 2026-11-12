@@ -218,6 +218,17 @@ public class ShipmentService {
         return client.name() + "\n" + clientAddressText(client);
     }
 
+    /** La position de l'adresse de livraison de la commande ; à défaut, celle du siège du client. */
+    private GeoLocation deliveryLocation(OrderInfo order, ClientInfo client) {
+        if (order.deliveryAddressId() != null) {
+            Optional<DeliveryAddressInfo> address = clientLookup.findAddress(client.id(), order.deliveryAddressId());
+            if (address.isPresent()) {
+                return address.get().location();
+            }
+        }
+        return client.location();
+    }
+
     private static String clientAddressText(ClientInfo client) {
         return Stream.of(client.addressLine1(), client.addressLine2(),
                         ((client.postalCode() != null ? client.postalCode() + " " : "")
@@ -257,7 +268,7 @@ public class ShipmentService {
         return new ShipmentResponse(shipment.getId(), shipment.getCode(), shipment.getStatus(), order.id(), order.code(),
                 order.customerReference(), order.incoterm(), client.id(), client.code(), client.name(),
                 clientAddressText(client), client.vatNumber(), client.exciseNumber(), client.language(), addressText,
-                shipment.getPlannedDate(), shipment.getCarrier(), shipment.getTransportReference(), shipment.getNotes(),
+                deliveryLocation(order, client), shipment.getPlannedDate(), shipment.getCarrier(), shipment.getTransportReference(), shipment.getNotes(),
                 lines, shipment.totalBottles(), shipment.getShippedAt(), shipment.getShippedBy(),
                 shipment.getCreatedBy(), shipment.getCreatedAt(), shipment.getUpdatedAt());
     }

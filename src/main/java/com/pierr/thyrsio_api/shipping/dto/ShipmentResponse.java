@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.shipping.dto;
 
+import com.pierr.thyrsio_api.referentiel.GeoLocation;
 import com.pierr.thyrsio_api.referentiel.Incoterm;
 import com.pierr.thyrsio_api.shipping.ShipmentStatus;
 
@@ -11,6 +12,7 @@ import java.util.UUID;
 /**
  * La fiche d'une expédition, et tout ce qu'il faut pour imprimer son bon de livraison.
  * deliveryAddressText : figée au départ ; avant, l'adresse actuelle de la commande.
+ * deliveryLocation : la position de l'adresse de livraison (ou du siège) sur la carte, si elle est connue.
  */
 public record ShipmentResponse(
         UUID id,
@@ -28,6 +30,7 @@ public record ShipmentResponse(
         String clientExciseNumber,
         String clientLanguage,
         String deliveryAddressText,
+        GeoLocation deliveryLocation,
         LocalDate plannedDate,
         String carrier,
         String transportReference,
