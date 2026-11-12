@@ -1,5 +1,6 @@
 package com.pierr.thyrsio_api.referentiel;
 
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +19,8 @@ class GeocodingConfig {
     @Bean
     @ConditionalOnMissingBean(Geocoder.class)
     Geocoder nominatimGeocoder(GeocodingProperties properties) {
+        LoggerFactory.getLogger(GeocodingConfig.class)
+                .info("Géocodage des adresses activé ({}, toutes les {})", properties.baseUrl(), properties.interval());
         return new NominatimGeocoder(RestClient.builder(), properties);
     }
 

@@ -1,6 +1,7 @@
 package com.pierr.thyrsio_api.referentiel.dto;
 
 import com.pierr.thyrsio_api.referentiel.GeoLocation;
+import com.pierr.thyrsio_api.referentiel.LocationStatus;
 import com.pierr.thyrsio_api.referentiel.Supplier;
 import com.pierr.thyrsio_api.referentiel.SupplierKind;
 
@@ -17,7 +18,8 @@ public record SupplierResponse(
         Integer averageLeadTimeDays,
         boolean active,
         Instant createdAt,
-        GeoLocation location
+        GeoLocation location,
+        LocationStatus locationStatus
 ) {
     public static SupplierResponse from(Supplier supplier) {
         return new SupplierResponse(
@@ -30,7 +32,8 @@ public record SupplierResponse(
                 supplier.getAverageLeadTimeDays(),
                 supplier.isActive(),
                 supplier.getCreatedAt(),
-                supplier.getLocation()
+                supplier.getLocation(),
+                supplier.getLocationStatus()
         );
     }
 }

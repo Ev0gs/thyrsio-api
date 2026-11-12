@@ -16,11 +16,13 @@ public class ClientDeliveryAddressService {
     private final ClientDeliveryAddressRepository addressRepository;
     // Même module : on peut utiliser le repository des clients directement
     private final ClientRepository clientRepository;
+    private final GeocodingTrigger geocoding;
 
     public ClientDeliveryAddressService(ClientDeliveryAddressRepository addressRepository,
-                                        ClientRepository clientRepository) {
+                                        ClientRepository clientRepository, GeocodingTrigger geocoding) {
         this.addressRepository = addressRepository;
         this.clientRepository = clientRepository;
+        this.geocoding = geocoding;
     }
 
     @Transactional(readOnly = true)
@@ -53,6 +55,7 @@ public class ClientDeliveryAddressService {
         // La première adresse d'un client devient son adresse par défaut
         address.setDefaultAddress(request.wantsDefault()
                 || !addressRepository.existsByClientIdAndDefaultAddressTrue(clientId));
+        geocoding.addressChanged();
         return DeliveryAddressResponse.from(addressRepository.save(address));
     }
 
@@ -69,6 +72,7 @@ public class ClientDeliveryAddressService {
         }
         applyFields(address, request);
         address.setDefaultAddress(request.wantsDefault());
+        geocoding.addressChanged();
         return DeliveryAddressResponse.from(address);
     }
 

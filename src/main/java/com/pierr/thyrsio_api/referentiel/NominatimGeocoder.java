@@ -5,6 +5,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -95,8 +96,12 @@ public class NominatimGeocoder implements Geocoder {
                     .retrieve()
                     .body(new ParameterizedTypeReference<List<Place>>() {
                     });
+        } catch (RestClientResponseException e) {
+            // 403 : User-Agent refusé ou adresse IP bloquée ; 429 : trop de requêtes
+            throw new GeocodingUnavailableException("Nominatim refuse la requête (HTTP "
+                    + e.getStatusCode().value() + ") : " + e.getResponseBodyAsString().lines().findFirst().orElse(""), e);
         } catch (RestClientException e) {
-            throw new GeocodingUnavailableException("Nominatim ne répond pas : " + e.getMessage(), e);
+            throw new GeocodingUnavailableException("Nominatim injoignable : " + e.getMessage(), e);
         }
     }
 

@@ -1,6 +1,7 @@
 package com.pierr.thyrsio_api.referentiel.dto;
 
 import com.pierr.thyrsio_api.referentiel.GeoLocation;
+import com.pierr.thyrsio_api.referentiel.LocationStatus;
 import com.pierr.thyrsio_api.referentiel.Client;
 import com.pierr.thyrsio_api.referentiel.Incoterm;
 
@@ -26,7 +27,8 @@ public record ClientResponse(
         String notes,
         boolean active,
         Instant createdAt,
-        GeoLocation location
+        GeoLocation location,
+        LocationStatus locationStatus
 ) {
     public static ClientResponse from(Client client) {
         return new ClientResponse(
@@ -48,7 +50,8 @@ public record ClientResponse(
                 client.getNotes(),
                 client.isActive(),
                 client.getCreatedAt(),
-                client.getLocation()
+                client.getLocation(),
+                client.getLocationStatus()
         );
     }
 }

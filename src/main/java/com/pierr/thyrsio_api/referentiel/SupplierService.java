@@ -14,9 +14,11 @@ import java.util.UUID;
 public class SupplierService {
 
     private final SupplierRepository supplierRepository;
+    private final GeocodingTrigger geocoding;
 
-    public SupplierService(SupplierRepository supplierRepository) {
+    public SupplierService(SupplierRepository supplierRepository, GeocodingTrigger geocoding) {
         this.supplierRepository = supplierRepository;
+        this.geocoding = geocoding;
     }
 
     /** kind null : tous les fournisseurs, quel que soit ce qu'ils fournissent. */
@@ -45,6 +47,7 @@ public class SupplierService {
         Supplier supplier = new Supplier(request.name().trim());
         supplier.setKind(request.kind() != null ? request.kind() : SupplierKind.DRY_GOODS);
         applyOptionalFields(supplier, request);
+        geocoding.addressChanged();
         return SupplierResponse.from(supplierRepository.save(supplier));
     }
 
@@ -60,6 +63,7 @@ public class SupplierService {
             supplier.setKind(request.kind());
         }
         applyOptionalFields(supplier, request);
+        geocoding.addressChanged();
         return SupplierResponse.from(supplier);
     }
 

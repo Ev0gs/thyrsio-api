@@ -25,9 +25,11 @@ public class ClientService {
     private static final Pattern VAT_NUMBER = Pattern.compile("^[A-Z]{2}[A-Z0-9]{2,12}$");
 
     private final ClientRepository clientRepository;
+    private final GeocodingTrigger geocoding;
 
-    public ClientService(ClientRepository clientRepository) {
+    public ClientService(ClientRepository clientRepository, GeocodingTrigger geocoding) {
         this.clientRepository = clientRepository;
+        this.geocoding = geocoding;
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +61,7 @@ public class ClientService {
         }
         Client client = new Client(code);
         applyFields(client, request);
+        geocoding.addressChanged();
         return ClientResponse.from(clientRepository.save(client));
     }
 
@@ -67,6 +70,7 @@ public class ClientService {
     public ClientResponse update(UUID id, UpdateClientRequest request) {
         Client client = findClient(id);
         applyFields(client, request);
+        geocoding.addressChanged();
         return ClientResponse.from(client);
     }
 

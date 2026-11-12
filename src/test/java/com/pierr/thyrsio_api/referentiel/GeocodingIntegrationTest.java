@@ -57,14 +57,16 @@ class GeocodingIntegrationTest extends ApiIntegrationTest {
                  "addressLine1": "10 quai des Chartrons", "postalCode": "33000", "city": "Bordeaux"}
                 """.formatted(unique("GEO")))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.location").doesNotExist())), "$.id");
+                .andExpect(jsonPath("$.location").doesNotExist())
+                .andExpect(jsonPath("$.locationStatus").value("PENDING"))), "$.id");
 
         job.runOnce();
 
         getAsUser("/api/referentiel/clients/" + id)
                 .andExpect(jsonPath("$.location.latitude").value(44.8378))
                 .andExpect(jsonPath("$.location.longitude").value(-0.5792))
-                .andExpect(jsonPath("$.location.approximate").value(false));
+                .andExpect(jsonPath("$.location.approximate").value(false))
+                .andExpect(jsonPath("$.locationStatus").value("LOCATED"));
         assertThat(searched).anySatisfy(request -> {
             assertThat(request.street()).isEqualTo("10 quai des Chartrons");
             assertThat(request.countryCode()).isEqualTo("FR");
@@ -104,7 +106,18 @@ class GeocodingIntegrationTest extends ApiIntegrationTest {
 
         assertThat(searched.stream().filter(request -> "Nulle-Part".equals(request.city())).count())
                 .isEqualTo(attempts).isEqualTo(1);
-        getAsUser("/api/referentiel/clients/" + id).andExpect(jsonPath("$.location").doesNotExist());
+        getAsUser("/api/referentiel/clients/" + id)
+                .andExpect(jsonPath("$.location").doesNotExist())
+                .andExpect(jsonPath("$.locationStatus").value("NOT_FOUND"));
+    }
+
+    @Test
+    void a_client_without_a_town_has_nothing_to_locate() throws Exception {
+        postJson("/api/referentiel/clients", """
+                {"code": "%s", "name": "Sans adresse", "countryCode": "FR"}
+                """.formatted(unique("GEO")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.locationStatus").value("NO_ADDRESS"));
     }
 
     @Test

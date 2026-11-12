@@ -117,6 +117,8 @@ public class Client {
     /** null tant que l'adresse n'est pas localisée, ou si elle est introuvable. */
     public GeoLocation getLocation() { return Geocoding.location(geocoding, geocodingRequest()); }
 
+    public LocationStatus getLocationStatus() { return Geocoding.status(geocoding, geocodingRequest()); }
+
     /** L'adresse du siège à chercher sur la carte (null sans ville). */
     GeocodingRequest geocodingRequest() {
         return GeocodingRequest.structured(addressLine1, postalCode, city, countryCode);

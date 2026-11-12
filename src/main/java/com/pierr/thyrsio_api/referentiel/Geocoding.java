@@ -43,6 +43,17 @@ public class Geocoding {
      * La position, si elle correspond bien à l'adresse actuelle : une adresse modifiée mais pas encore
      * enregistrée en base (réponse d'un PUT) n'affiche pas l'ancienne position.
      */
+    static LocationStatus status(Geocoding geocoding, GeocodingRequest current) {
+        if (current == null) {
+            return LocationStatus.NO_ADDRESS;
+        }
+        if (geocoding == null || geocoding.geocodedAt == null
+                || !Objects.equals(current.query(), geocoding.geocodingQuery)) {
+            return LocationStatus.PENDING;
+        }
+        return geocoding.latitude != null ? LocationStatus.LOCATED : LocationStatus.NOT_FOUND;
+    }
+
     static GeoLocation location(Geocoding geocoding, GeocodingRequest current) {
         String query = current != null ? current.query() : null;
         if (geocoding == null || geocoding.latitude == null || geocoding.longitude == null

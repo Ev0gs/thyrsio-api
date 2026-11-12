@@ -109,6 +109,8 @@ public class ClientDeliveryAddress {
     /** null tant que l'adresse n'est pas localisée, ou si elle est introuvable. */
     public GeoLocation getLocation() { return Geocoding.location(geocoding, geocodingRequest()); }
 
+    public LocationStatus getLocationStatus() { return Geocoding.status(geocoding, geocodingRequest()); }
+
     GeocodingRequest geocodingRequest() {
         return GeocodingRequest.structured(addressLine1, postalCode, city, countryCode);
     }

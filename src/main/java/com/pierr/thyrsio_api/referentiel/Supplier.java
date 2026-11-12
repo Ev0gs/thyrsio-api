@@ -122,6 +122,10 @@ public class Supplier {
         return Geocoding.location(geocoding, geocodingRequest());
     }
 
+    public LocationStatus getLocationStatus() {
+        return Geocoding.status(geocoding, geocodingRequest());
+    }
+
     /** L'adresse d'un fournisseur tient en un seul champ : elle est cherchée telle quelle. */
     GeocodingRequest geocodingRequest() {
         return GeocodingRequest.freeText(address);
