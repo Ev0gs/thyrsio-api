@@ -393,3 +393,121 @@ FROM (VALUES
          JOIN bottlings b ON b.code = v.bottling AND b.status = 'PLANNED'
          JOIN articles a ON a.code = v.article
 ON CONFLICT ON CONSTRAINT bottling_materials_unique_key DO NOTHING;
+
+
+-- =====================================================================
+-- Ventes : commandes clients, mises qui les servent, expéditions
+-- =====================================================================
+
+-- ---------- Commandes ----------
+-- CC-26-003 est déjà partie (expédition EX-26-001) ; CC-26-005 est encore un brouillon.
+INSERT INTO customer_orders (code, client_id, delivery_address_id, customer_reference, order_date,
+                             requested_loading_date, incoterm, status, confirmed_at, created_by)
+SELECT v.code, c.id,
+       (SELECT d.id FROM client_delivery_addresses d WHERE d.client_id = c.id AND d.default_address),
+       v.reference,
+       (date_trunc('day', now()) + v.ordered_in * interval '1 day')::date,
+       (date_trunc('day', now()) + v.loading_in * interval '1 day')::date,
+       v.incoterm, v.status,
+       CASE WHEN v.status <> 'DRAFT' THEN date_trunc('day', now()) + v.ordered_in * interval '1 day' + interval '10 hours' END,
+       '00000000-0000-4000-8000-000000000001'::uuid
+FROM (VALUES
+          ('CC-26-001', 'TOKYO-WINE',   'TWI-PO-8841',  -12,  6, 'FOB', 'CONFIRMED'),
+          ('CC-26-002', 'VINS-SAVEURS', 'VS-2026-117',   -8,  3, 'DAP', 'CONFIRMED'),
+          ('CC-26-003', 'CAVE-PENTES',  NULL,           -10, -2, 'EXW', 'SHIPPED'),
+          ('CC-26-004', 'HUDSON-FW',    'HFW-55120',     -5, 20, 'FCA', 'CONFIRMED'),
+          ('CC-26-005', 'TOKYO-WINE',   NULL,             0, 30, 'FOB', 'DRAFT')
+     ) AS v(code, client, reference, ordered_in, loading_in, incoterm, status)
+         JOIN clients c ON c.code = v.client
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO customer_order_lines (order_id, article_id, quantity, unit_price, shipped_quantity)
+SELECT o.id, a.id, v.quantity, v.price, v.shipped
+FROM (VALUES
+          ('CC-26-001', 'PF-CDB22-75',     3600,  7.20,   0),
+          ('CC-26-001', 'PF-BDXS23-75-JP', 9000,  6.40,   0),
+          ('CC-26-002', 'PF-BDXS23-75-FR', 1200,  6.90,   0),
+          ('CC-26-002', 'PF-PREST21-150',   300, 32.00,   0),
+          ('CC-26-003', 'PF-BDXS23-75-FR',  600,  7.10, 600),
+          ('CC-26-004', 'PF-BDX23-75',     6000,  4.80,   0),
+          ('CC-26-004', 'PF-BDXB24-75',    2400,  5.20,   0),
+          ('CC-26-005', 'PF-PREST21-150',   600, 31.00,   0)
+     ) AS v(orders, article, quantity, price, shipped)
+         JOIN customer_orders o ON o.code = v.orders
+         JOIN articles a ON a.code = v.article
+ON CONFLICT ON CONSTRAINT customer_order_lines_unique_key DO NOTHING;
+
+-- ---------- Les mises qui servent ces commandes ----------
+-- CC-26-004 · Bordeaux Blanc n'est servie par aucune mise : elle apparaît dans « À planifier ».
+INSERT INTO bottling_allocations (bottling_id, order_line_id, quantity)
+SELECT b.id, l.id, v.quantity
+FROM (VALUES
+          ('MB-26-001', 'CC-26-001', 'PF-CDB22-75',     3600),
+          ('MB-26-002', 'CC-26-001', 'PF-BDXS23-75-JP', 3000),
+          ('MB-26-003', 'CC-26-004', 'PF-BDX23-75',     6000)
+     ) AS v(bottling, orders, article, quantity)
+         JOIN bottlings b ON b.code = v.bottling AND b.status = 'PLANNED'
+         JOIN customer_orders o ON o.code = v.orders
+         JOIN articles a ON a.code = v.article
+         JOIN customer_order_lines l ON l.order_id = o.id AND l.article_id = a.id
+ON CONFLICT ON CONSTRAINT bottling_allocations_unique_key DO NOTHING;
+
+-- ---------- Expéditions ----------
+-- EX-26-001 : partie il y a deux jours (CC-26-003). EX-26-002 : en préparation pour CC-26-002.
+INSERT INTO shipments (code, order_id, status, planned_date, carrier, transport_reference,
+                       delivery_address_text, shipped_at, shipped_by, created_by)
+SELECT v.code, o.id, v.status, (date_trunc('day', now()) + v.planned_in * interval '1 day')::date,
+       v.carrier, v.reference,
+       CASE WHEN v.status = 'SHIPPED' THEN
+           concat_ws(E'\n', coalesce(d.recipient_name, c.name), d.address_line1, d.address_line2,
+                     trim(coalesce(d.postal_code || ' ', '') || d.city), d.country_code,
+                     'Tél. ' || d.phone, d.delivery_instructions)
+       END,
+       CASE WHEN v.status = 'SHIPPED' THEN date_trunc('day', now()) + v.planned_in * interval '1 day' + interval '14 hours' END,
+       CASE WHEN v.status = 'SHIPPED' THEN '00000000-0000-4000-8000-000000000001'::uuid END,
+       '00000000-0000-4000-8000-000000000001'::uuid
+FROM (VALUES
+          ('EX-26-001', 'CC-26-003', 'SHIPPED', -2, 'Transporteur du client', 'Enlèvement CP-0921'),
+          ('EX-26-002', 'CC-26-002', 'DRAFT',    3, 'Transports Girondins',   NULL)
+     ) AS v(code, orders, status, planned_in, carrier, reference)
+         JOIN customer_orders o ON o.code = v.orders
+         JOIN clients c ON c.id = o.client_id
+         LEFT JOIN client_delivery_addresses d ON d.id = o.delivery_address_id
+ON CONFLICT (code) DO NOTHING;
+
+-- Les lignes chargées, sur les lots des mises déjà faites (MB-0410 : magnums, MB-0411 : Bordeaux Sup. France)
+INSERT INTO shipment_lines (shipment_id, order_line_id, article_id, lot_id, quantity)
+SELECT s.id, l.id, l.article_id, lot.id, v.quantity
+FROM (VALUES
+          ('EX-26-001', 'PF-BDXS23-75-FR', 'MB-0411',  600),
+          ('EX-26-002', 'PF-BDXS23-75-FR', 'MB-0411', 1200),
+          ('EX-26-002', 'PF-PREST21-150',  'MB-0410',  300)
+     ) AS v(shipment, article, bottling, quantity)
+         JOIN shipments s ON s.code = v.shipment
+         JOIN articles a ON a.code = v.article
+         JOIN customer_order_lines l ON l.order_id = s.order_id AND l.article_id = a.id
+         JOIN bottlings b ON b.code = v.bottling
+         JOIN lots lot ON lot.article_id = a.id AND lot.lot_number = b.lot_number
+WHERE NOT EXISTS (SELECT 1 FROM shipment_lines x WHERE x.shipment_id = s.id);
+
+-- La sortie de stock de l'expédition partie
+INSERT INTO stock_movements (article_id, lot_id, type, quantity, occurred_at, reference, created_by)
+SELECT sl.article_id, sl.lot_id, 'SHIPMENT', -sl.quantity, s.shipped_at,
+       'Expédition ' || s.code || ' · ' || o.code, '00000000-0000-4000-8000-000000000001'::uuid
+FROM shipment_lines sl
+         JOIN shipments s ON s.id = sl.shipment_id AND s.status = 'SHIPPED'
+         JOIN customer_orders o ON o.id = s.order_id
+WHERE s.created_by = '00000000-0000-4000-8000-000000000001'::uuid
+  AND NOT EXISTS (SELECT 1 FROM stock_movements m
+                  WHERE m.type = 'SHIPMENT'
+                    AND m.created_by = '00000000-0000-4000-8000-000000000001'::uuid);
+
+-- Les soldes des produits finis, recalculés à partir du journal (toujours égaux à la somme des mouvements)
+UPDATE stock_balances b
+SET quantity = t.total, updated_at = t.last_at
+FROM (SELECT m.article_id, m.lot_id, sum(m.quantity) AS total, max(m.occurred_at) AS last_at
+      FROM stock_movements m
+               JOIN articles a ON a.id = m.article_id
+               JOIN article_categories c ON c.id = a.category_id AND c.code = 'PRODUIT_FINI'
+      GROUP BY m.article_id, m.lot_id) t
+WHERE b.article_id = t.article_id AND b.lot_id IS NOT DISTINCT FROM t.lot_id AND b.quantity <> t.total;
