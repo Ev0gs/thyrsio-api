@@ -32,6 +32,9 @@ public interface TankRepository extends JpaRepository<Tank, UUID> {
     @Query("select t from Tank t where t.id = :id")
     Optional<Tank> findWithLotById(@Param("id") UUID id);
 
+    @EntityGraph(attributePaths = "wineLot")
+    List<Tank> findWithLotByIdIn(Collection<UUID> ids);
+
     /** Les cuves qui contiennent ce lot. */
     List<Tank> findByWineLotIdOrderByCodeAsc(UUID wineLotId);
 

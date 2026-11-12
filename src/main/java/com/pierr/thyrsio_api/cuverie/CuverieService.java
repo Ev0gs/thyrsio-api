@@ -194,6 +194,28 @@ public class CuverieService {
         return TankMovementResponse.from(movement);
     }
 
+    // ========== Mise en bouteille (appelé par le module Production) ==========
+
+    /**
+     * Le vin tiré d'une cuve pour une mise : un mouvement BOTTLING.
+     * Public : c'est la porte d'entrée du module Production, qui l'appelle dans sa propre transaction.
+     */
+    @Transactional
+    public void recordBottling(UUID tankId, BigDecimal volumeHl, Instant occurredAt, String reference, UUID userId) {
+        if (volumeHl.signum() <= 0) {
+            throw new IllegalArgumentException("Le volume mis en bouteille doit être positif");
+        }
+        Tank tank = tankRepository.findForUpdateById(tankId)
+                .orElseThrow(() -> new IllegalArgumentException("Cuve inconnue : " + tankId));
+        if (tank.isEmpty()) {
+            throw new BusinessRuleException("La cuve " + tank.getCode() + " est vide : aucun vin à mettre en bouteille");
+        }
+        WineLot lot = tank.getWineLot();
+        tank.apply(lot, volumeHl.negate());
+        movementRepository.save(new TankMovement(tank, lot, TankMovementType.BOTTLING, volumeHl.negate(), null,
+                occurredAt, reference, null, userId));
+    }
+
     // ========== Lecture ==========
 
     @Transactional(readOnly = true)
