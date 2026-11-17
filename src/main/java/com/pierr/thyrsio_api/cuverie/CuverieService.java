@@ -6,6 +6,9 @@ import com.pierr.thyrsio_api.cuverie.dto.*;
 import com.pierr.thyrsio_api.referentiel.SupplierInfo;
 import com.pierr.thyrsio_api.referentiel.SupplierKind;
 import com.pierr.thyrsio_api.referentiel.SupplierLookup;
+import com.pierr.thyrsio_api.registre.RegisterBook;
+import com.pierr.thyrsio_api.registre.RegisterEntryDraft;
+import com.pierr.thyrsio_api.registre.RegisterJournal;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -29,17 +32,20 @@ public class CuverieService {
     private final TankMovementRepository movementRepository;
     private final WineLotService wineLotService;
     private final SupplierLookup supplierLookup;
+    private final RegisterJournal journal;
 
     public CuverieService(TankRepository tankRepository,
                           WineLotRepository wineLotRepository,
                           TankMovementRepository movementRepository,
                           WineLotService wineLotService,
-                          SupplierLookup supplierLookup) {
+                          SupplierLookup supplierLookup,
+                          RegisterJournal journal) {
         this.tankRepository = tankRepository;
         this.wineLotRepository = wineLotRepository;
         this.movementRepository = movementRepository;
         this.wineLotService = wineLotService;
         this.supplierLookup = supplierLookup;
+        this.journal = journal;
     }
 
     // ========== Réception ==========
@@ -74,12 +80,34 @@ public class CuverieService {
         wineLotRepository.save(lot);
 
         Map<UUID, Tank> tanks = lockTanks(tankIds);
+        List<Map<String, Object>> fills = new ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO;
         for (TankFill fill : request.fills()) {
             Tank tank = tanks.get(fill.tankId());
             tank.apply(lot, fill.volumeHl());
             movementRepository.save(new TankMovement(tank, lot, TankMovementType.RECEPTION, fill.volumeHl(), null,
                     receivedAt, lot.getDaeNumber(), null, userId));
+            fills.add(Map.of("tank", tank.getCode(), "capacityHl", tank.getCapacityHl(), "volumeHl", fill.volumeHl()));
+            total = total.add(fill.volumeHl());
         }
+
+        // Le registre des entrées de vin en vrac
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("dae", lot.getDaeNumber());
+        data.put("supplier", supplier.name());
+        data.put("supplierLotNumber", lot.getSupplierLotNumber());
+        data.put("appellation", lot.getAppellation());
+        data.put("color", lot.getColor().name());
+        data.put("vintage", lot.getVintage());
+        data.put("alcohol", lot.getAlcohol());
+        data.put("fills", fills);
+        data.put("lotBalanceHl", total);
+        String tankCodes = String.join(", ", fills.stream().map(f -> (String) f.get("tank")).toList());
+        journal.record(new RegisterEntryDraft(RegisterBook.ENTREES_VRAC, "RECEPTION", receivedAt, userId,
+                lot.getId(), lot.getCode(), denomination(lot), tankCodes, total, lot.getDaeNumber(),
+                "Entrée de " + Tank.plain(total) + " hl de " + denomination(lot) + " (" + supplier.name() + ") en "
+                        + tankCodes + (lot.getDaeNumber() != null ? ", DAE " + lot.getDaeNumber() : ""),
+                data, 1, null));
         return wineLotService.toResponse(lot);
     }
 
@@ -141,7 +169,24 @@ public class CuverieService {
         movements.add(new TankMovement(destination, lot, TankMovementType.TRANSFER_IN, volume, transferId,
                 occurredAt, reference, notes, userId));
 
-        return movementRepository.saveAll(movements).stream().map(TankMovementResponse::from).toList();
+        List<TankMovementResponse> saved = movementRepository.saveAll(movements).stream()
+                .map(TankMovementResponse::from).toList();
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("from", source.getCode());
+        data.put("to", destination.getCode());
+        data.put("volumeHl", volume);
+        data.put("lossHl", loss);
+        data.put("sourceRemainingHl", source.getVolumeHl());
+        data.put("destinationVolumeHl", destination.getVolumeHl());
+        data.put("lotBalanceHl", lotBalance(lot));
+        data.put("notes", notes);
+        journal.record(new RegisterEntryDraft(RegisterBook.MOUVEMENTS, "TRANSFER", occurredAt, userId,
+                lot.getId(), lot.getCode(), denomination(lot), reference, volume, null,
+                "Transfert de " + Tank.plain(volume) + " hl de " + source.getCode() + " vers " + destination.getCode()
+                        + (loss.signum() > 0 ? ", perte de " + Tank.plain(loss) + " hl" : ""),
+                data, 1, null));
+        return saved;
     }
 
     // ========== Perte et jaugeage ==========
@@ -158,6 +203,18 @@ public class CuverieService {
                 tank, lot, TankMovementType.LOSS, request.volumeHl().negate(), null,
                 request.occurredAt() != null ? request.occurredAt() : Instant.now(),
                 blankToNull(request.reference()), blankToNull(request.notes()), userId));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tank", tank.getCode());
+        data.put("volumeHl", request.volumeHl());
+        data.put("tankVolumeHl", tank.getVolumeHl());
+        data.put("lotBalanceHl", lotBalance(lot));
+        data.put("notes", movement.getNotes());
+        // Une sortie : 3 jours ouvrables pour l'inscrire
+        journal.record(new RegisterEntryDraft(RegisterBook.MOUVEMENTS, "LOSS", movement.getOccurredAt(), userId,
+                lot.getId(), lot.getCode(), denomination(lot), tank.getCode(), request.volumeHl(),
+                movement.getReference(),
+                "Perte de " + Tank.plain(request.volumeHl()) + " hl en " + tank.getCode(), data, 3, null));
         return TankMovementResponse.from(movement);
     }
 
@@ -186,11 +243,26 @@ public class CuverieService {
             }
         }
 
+        BigDecimal recorded = tank.getVolumeHl();
         tank.apply(lot, delta);
         TankMovement movement = movementRepository.save(new TankMovement(
                 tank, lot, TankMovementType.ADJUSTMENT, delta, null,
                 request.occurredAt() != null ? request.occurredAt() : Instant.now(),
                 "Jaugeage : " + Tank.plain(request.measuredHl()) + " hl", blankToNull(request.notes()), userId));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tank", tank.getCode());
+        data.put("recordedHl", recorded);
+        data.put("measuredHl", request.measuredHl());
+        data.put("deltaHl", delta);
+        data.put("lotBalanceHl", lotBalance(lot));
+        data.put("notes", movement.getNotes());
+        journal.record(new RegisterEntryDraft(RegisterBook.MOUVEMENTS, "MEASURE", movement.getOccurredAt(), userId,
+                lot.getId(), lot.getCode(), denomination(lot), tank.getCode(), delta, null,
+                "Jaugeage de " + tank.getCode() + " : " + Tank.plain(request.measuredHl()) + " hl mesurés pour "
+                        + Tank.plain(recorded) + " hl enregistrés (écart " + (delta.signum() > 0 ? "+" : "")
+                        + Tank.plain(delta) + " hl)",
+                data, 1, null));
         return TankMovementResponse.from(movement);
     }
 
@@ -214,6 +286,33 @@ public class CuverieService {
         tank.apply(lot, volumeHl.negate());
         movementRepository.save(new TankMovement(tank, lot, TankMovementType.BOTTLING, volumeHl.negate(), null,
                 occurredAt, reference, null, userId));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("tank", tank.getCode());
+        data.put("volumeHl", volumeHl);
+        data.put("tankVolumeHl", tank.getVolumeHl());
+        data.put("lotBalanceHl", lotBalance(lot));
+        journal.record(new RegisterEntryDraft(RegisterBook.MOUVEMENTS, "BOTTLING_DRAW", occurredAt, userId,
+                lot.getId(), lot.getCode(), denomination(lot), tank.getCode(), volumeHl, reference,
+                "Tirage de " + Tank.plain(volumeHl) + " hl de " + tank.getCode() + " pour la " + reference.toLowerCase(),
+                data, 1, null));
+    }
+
+    /** « Bordeaux Supérieur rouge 2023 » : la dénomination telle qu'elle figure au registre. */
+    static String denomination(WineLot lot) {
+        String color = switch (lot.getColor()) {
+            case RED -> "rouge";
+            case WHITE -> "blanc";
+            case ROSE -> "rosé";
+        };
+        return lot.getAppellation() + " " + color + (lot.getVintage() != null ? " " + lot.getVintage() : "");
+    }
+
+    /** Le volume total du lot, toutes cuves confondues, après l'opération : le « solde » du cahier de chai. */
+    private BigDecimal lotBalance(WineLot lot) {
+        return tankRepository.findByWineLotIdOrderByCodeAsc(lot.getId()).stream()
+                .map(Tank::getVolumeHl)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // ========== Lecture ==========

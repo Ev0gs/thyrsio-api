@@ -1,5 +1,9 @@
 package com.pierr.thyrsio_api.production;
 
+import com.pierr.thyrsio_api.cuverie.dto.WineLotSummary;
+import com.pierr.thyrsio_api.registre.RegisterBook;
+import com.pierr.thyrsio_api.registre.RegisterEntryDraft;
+import com.pierr.thyrsio_api.registre.RegisterJournal;
 import com.pierr.thyrsio_api.common.BusinessRuleException;
 import com.pierr.thyrsio_api.common.ResourceNotFoundException;
 import com.pierr.thyrsio_api.cuverie.CuverieService;
@@ -58,6 +62,7 @@ public class BottlingService {
     private final ClientLookup clientLookup;
     private final BottlingAllocationRepository allocationRepository;
     private final int alertDays;
+    private final RegisterJournal journal;
 
     public BottlingService(BottlingRepository bottlingRepository,
                            BottlingPlanner planner,
@@ -70,8 +75,10 @@ public class BottlingService {
                            OrderLookup orderLookup,
                            ClientLookup clientLookup,
                            BottlingAllocationRepository allocationRepository,
+                           RegisterJournal journal,
                            // Combien de jours avant une mise on veut être alerté des manquants
                            @Value("${thyrsio.production.alert-days:10}") int alertDays) {
+        this.journal = journal;
         this.bottlingRepository = bottlingRepository;
         this.planner = planner;
         this.articleLookup = articleLookup;
@@ -199,7 +206,9 @@ public class BottlingService {
             consumed.add(new Bottling.Consumed(line.articleId(), line.lotId(), line.quantity()));
         }
 
-        // 2. Le vin tiré de la cuve
+        // 2. Le vin tiré de la cuve (lu avant le tirage : une cuve vidée n'a plus de lot)
+        TankInfo sourceTank = bottling.getLocation() == BottlingLocation.ON_SITE
+                ? tankLookup.findById(bottling.getSourceTankId()).orElse(null) : null;
         if (bottling.getLocation() == BottlingLocation.ON_SITE) {
             cuverieService.recordBottling(bottling.getSourceTankId(), request.wineUsedHl(), occurredAt, reference, userId);
         }
@@ -214,7 +223,46 @@ public class BottlingService {
                 request.brokenBottles() != null ? request.brokenBottles() : 0,
                 request.wineUsedHl(), lotNumber, consumed, userId);
         bottlingRepository.flush();
+
+        recordConditioning(bottling, finished, sourceTank, occurredAt, userId);
         return toResponse(bottling);
+    }
+
+    /**
+     * Le registre de conditionnement et d'identification des lots, sur le modèle de la FGVB :
+     * nature du produit, cuve, volume à embouteiller, récipients par contenance, volume embouteillé,
+     * embouteilleur, n° de lot.
+     */
+    private void recordConditioning(Bottling bottling, ArticleInfo finished, TankInfo sourceTank, Instant occurredAt,
+                                    UUID userId) {
+        WineLotSummary wine = sourceTank != null ? sourceTank.wineLot() : null;
+        String wineName = wine != null
+                ? wine.appellation() + (wine.vintage() != null ? " " + wine.vintage() : "")
+                : bottling.getWineDescription();
+        BigDecimal bottledHl = BigDecimal.valueOf((long) bottling.getProducedBottles() * bottling.getBottleVolumeCl())
+                .movePointLeft(4);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("bottling", bottling.getCode());
+        data.put("product", finished.label());
+        data.put("productCode", finished.code());
+        data.put("wine", wineName);
+        data.put("location", bottling.getLocation().name());
+        data.put("tank", sourceTank != null ? sourceTank.code() : null);
+        data.put("volumeToBottleHl", bottling.getWineUsedHl());
+        data.put("containers", List.of(Map.of("volumeCl", bottling.getBottleVolumeCl(),
+                "count", bottling.getProducedBottles())));
+        data.put("bottledHl", bottledHl);
+        data.put("brokenBottles", bottling.getBrokenBottles());
+        data.put("bottler", bottling.getContractor());
+        data.put("lotNumber", bottling.getLotNumber());
+        journal.record(new RegisterEntryDraft(RegisterBook.CONDITIONNEMENT, "BOTTLING", occurredAt, userId,
+                wine != null ? wine.id() : null, wine != null ? wine.code() : null,
+                finished.label(), sourceTank != null ? sourceTank.code() : null, bottledHl, bottling.getLotNumber(),
+                "Mise " + bottling.getCode() + " : " + bottling.getProducedBottles() + " bouteilles de "
+                        + bottling.getBottleVolumeCl() + " cl de " + finished.label() + ", lot " + bottling.getLotNumber()
+                        + (bottling.getContractor() != null ? " (" + bottling.getContractor() + ")" : ""),
+                data, 1, null));
     }
 
     // ========== Méthodes utilitaires ==========

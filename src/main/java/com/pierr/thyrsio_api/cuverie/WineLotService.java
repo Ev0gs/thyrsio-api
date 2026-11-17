@@ -1,5 +1,8 @@
 package com.pierr.thyrsio_api.cuverie;
 
+import com.pierr.thyrsio_api.registre.RegisterBook;
+import com.pierr.thyrsio_api.registre.RegisterEntryDraft;
+import com.pierr.thyrsio_api.registre.RegisterJournal;
 import com.pierr.thyrsio_api.common.ResourceNotFoundException;
 import com.pierr.thyrsio_api.cuverie.dto.UpdateWineLotRequest;
 import com.pierr.thyrsio_api.cuverie.dto.WineLotResponse;
@@ -28,13 +31,16 @@ public class WineLotService {
     private final WineLotRepository wineLotRepository;
     private final TankRepository tankRepository;
     private final SupplierLookup supplierLookup;
+    private final RegisterJournal journal;
 
     public WineLotService(WineLotRepository wineLotRepository,
                           TankRepository tankRepository,
-                          SupplierLookup supplierLookup) {
+                          SupplierLookup supplierLookup,
+                          RegisterJournal journal) {
         this.wineLotRepository = wineLotRepository;
         this.tankRepository = tankRepository;
         this.supplierLookup = supplierLookup;
+        this.journal = journal;
     }
 
     // ========== Lecture ==========
@@ -70,9 +76,15 @@ public class WineLotService {
 
     // ========== Écriture ==========
 
+    /**
+     * Corriger la fiche d'un lot. Le registre garde la trace : une contre-écriture rattachée à la réception
+     * indique chaque champ réglementaire modifié, avec sa valeur avant et après.
+     */
     @Transactional
-    public WineLotResponse update(UUID id, UpdateWineLotRequest request) {
+    public WineLotResponse update(UUID id, UpdateWineLotRequest request, UUID userId) {
         WineLot lot = findLot(id);
+        Map<String, Object> before = registerFields(lot);
+        String denominationBefore = CuverieService.denomination(lot);
         lot.setAppellation(request.appellation().trim());
         lot.setColor(request.color());
         lot.setVintage(request.vintage());
@@ -81,7 +93,39 @@ public class WineLotService {
         lot.setDaeNumber(blankToNull(request.daeNumber()));
         lot.setPricePerHl(request.pricePerHl());
         lot.setNotes(blankToNull(request.notes()));
+
+        Map<String, Object> after = registerFields(lot);
+        Map<String, Object> changes = new LinkedHashMap<>();
+        for (String field : before.keySet()) {
+            if (!Objects.equals(before.get(field), after.get(field))) {
+                Map<String, Object> change = new LinkedHashMap<>();
+                change.put("before", before.get(field));
+                change.put("after", after.get(field));
+                changes.put(field, change);
+            }
+        }
+        if (!changes.isEmpty()) {
+            journal.record(new RegisterEntryDraft(RegisterBook.ENTREES_VRAC, "CORRECTION", Instant.now(), userId,
+                    lot.getId(), lot.getCode(), CuverieService.denomination(lot), null, null, lot.getDaeNumber(),
+                    "Correction de la fiche du lot " + lot.getCode() + " (" + String.join(", ", changes.keySet())
+                            + ")" + (denominationBefore.equals(CuverieService.denomination(lot)) ? ""
+                            : " : " + denominationBefore + " devient " + CuverieService.denomination(lot)),
+                    Map.of("changes", changes), 0,
+                    journal.lastEntryId(lot.getId(), "RECEPTION").orElse(null)));
+        }
         return toResponse(lot);
+    }
+
+    /** Les champs de la fiche qui figurent au registre : leurs corrections y sont tracées. */
+    private static Map<String, Object> registerFields(WineLot lot) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("appellation", lot.getAppellation());
+        fields.put("color", lot.getColor().name());
+        fields.put("vintage", lot.getVintage());
+        fields.put("alcohol", lot.getAlcohol() != null ? lot.getAlcohol().stripTrailingZeros() : null);
+        fields.put("supplierLotNumber", lot.getSupplierLotNumber());
+        fields.put("dae", lot.getDaeNumber());
+        return fields;
     }
 
     // ========== Pour le module (package-private) ==========

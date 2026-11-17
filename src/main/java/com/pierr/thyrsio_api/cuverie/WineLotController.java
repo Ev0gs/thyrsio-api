@@ -59,8 +59,9 @@ public class WineLotController {
     @Operation(summary = "Corriger la fiche d'un lot",
             description = "Le code, le fournisseur et la date de réception ne changent pas.")
     @PutMapping("/wine-lots/{id}")
-    public WineLotResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateWineLotRequest request) {
-        return wineLotService.update(id, request);
+    public WineLotResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateWineLotRequest request,
+                                  @Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
+        return wineLotService.update(id, request, CurrentUser.from(jwt).keycloakId());
     }
 
     @Operation(summary = "Analyses d'un lot", description = "De la plus récente à la plus ancienne.")
