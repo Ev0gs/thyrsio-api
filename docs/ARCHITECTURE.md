@@ -305,6 +305,13 @@ La construction suit l'ordre des dépendances : chaque phase est utilisable seul
 7. **Traçabilité, documents et tableau de bord** : recherches de lots jusqu'au client, PDF, imports et exports.
 8. **Plus tard, selon les besoins** : réglementaire (DRM, CRD), transmission à GAMMA2, intégration avec les logiciels de vente, instance mutualisée.
 
+### Périmètre recentré sur la production (17 novembre 2026)
+
+Le client principal n'utilise que la partie production : stock de matières sèches, cuverie (le journal des mouvements de vin tient lieu de cahier de chai), mises en bouteille, fournisseurs. Les branches s'organisent ainsi :
+
+- **erp-complet** : l'état complet au 17 novembre (ventes, clients, expéditions, bon de livraison), figé pour pouvoir y revenir.
+- **production** : la version recentrée, fusionnée dans `main` une fois prête. Les ventes y sont masquées côté front par un drapeau (`FEATURES.sales` dans `thyrsio-web/src/app/core/features.ts`) ; leur code et leurs endpoints restent en place. Remettre le drapeau à `true` les fait réapparaître.
+
 ### Reste à faire (point du 12 novembre 2026)
 
 Le flux physique est complet, de l'achat du vin à l'expédition. Ce qui manque, dans l'ordre conseillé :
