@@ -24,7 +24,7 @@ Les réponses du premier client fixent le périmètre initial ; chaque choix res
 | Mises en bouteille | Prestataires qui viennent avec un camion de mise | Entité **Prestataire de mise** ; le planning dépend de leurs disponibilités |
 | Vin en vrac | Acheté puis stocké dans leurs propres cuves | Module **Cuverie** dès la phase 2 |
 | Sites | Un chai de stockage (avec une partie cuverie) et un garage ; les produits finis attendent dans l'un ou l'autre avant chargement | Pas d'emplacement pour la matière sèche : le stock se suit **par article et par lot**. Les cuves (contenance, vin contenu) relèvent du module Cuverie. |
-| Numéros de lot | Règle propre au client, à venir | **Générateur paramétrable** ; lot porté par la ligne de mise |
+| Numéros de lot | L + sigle de l'appellation + millésime + n° d'ordre (LBX2401) | Attribué à chaque production dès la planification, jamais réutilisé |
 | Gencodes | Selon la commande, au choix ; origine encore inconnue | GTIN **facultatifs**, saisis ou générés ; option « étiquetage GS1 requis » par commande |
 | Expéditions | En général un chargement par commande, avec de la flexibilité | Un chargement peut regrouper plusieurs commandes, une commande peut partir en plusieurs fois |
 | Capsules CRD | Probablement utilisées | Catégorie CRD (sans lot : les matières sèches ne sont pas suivies par lot) ; régime fiscal enregistré sur chaque chargement |
@@ -165,7 +165,8 @@ Une mise peut servir plusieurs commandes et produire aussi pour le stock ; elle 
 | Ligne de mise | un produit fini et sa version de nomenclature, cuve et lot de vin source, quantité prévue puis réalisée, **numéro de lot de mise** |
 | Affectation | quantité d'une ligne de mise réservée à une ligne de commande client ; ce qui n'est affecté à aucune commande part en stock |
 
-- Le **numéro de lot** est produit par un **générateur paramétrable** (motif combinant année, séquence, code de cuvée…), configuré par client. La règle du premier client reste à recevoir.
+- Le **numéro de lot** est attribué à chaque production dès sa planification : L + sigle de l'appellation (référentiel Appellations) + millésime sur 2 chiffres (NM sans millésime) + numéro d'ordre sur 2 chiffres (LBX2401). Un compteur par préfixe, qui ne recule jamais : un numéro n'est jamais redonné, même après une annulation. Changer l'appellation ou le millésime d'une production planifiée lui donne un nouveau numéro.
+- Dans le code : la séance est `Bottling` (une demi-journée, une journée ou plusieurs ; ses dates et son état se déduisent de ses productions), la ligne est `BottlingProduction` (jour et créneau matin / après-midi / journée, clôturée seule).
 - Si cette règle impose un lot par commande, on crée une ligne de mise par commande ; sinon, une ligne peut servir plusieurs commandes.
 
 ### Cycle de vie
@@ -330,7 +331,7 @@ Ces réponses sont à obtenir auprès du client avant la phase concernée.
 
 - [ ] **Facturation** : faut-il facturer dans Thyrsio, ou exporter les expéditions vers le logiciel de facturation actuel du client ?
 
-- [ ] **Numéros de lot** : quelle règle, et un lot est-il propre à une commande ou à une production qui peut servir plusieurs commandes ? (avant la phase 3)
+- [x] **Numéros de lot** : L + sigle de l'appellation + millésime + n° d'ordre, un par production (confirmé par le client).
 - [ ] **Gencodes** : préfixe GS1 du négociant, codes fournis par ses clients, ou les deux ? Gencodes déjà attribués à reprendre ? (avant la phase 5)
 - [ ] **Origine des commandes** : sont-elles déjà saisies dans un autre logiciel, qui proposerait un export ou une API ? (avant la phase 3)
 - [ ] **Statut fiscal** : le client est-il entrepositaire agréé, et quelle part de ses ventes va en France, dans l'UE et hors UE ? (avant la phase 4)

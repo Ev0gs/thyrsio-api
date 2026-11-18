@@ -294,38 +294,54 @@ FROM (VALUES
          JOIN article_categories c ON c.code = 'PRODUIT_FINI'
 ON CONFLICT (code) DO NOTHING;
 
--- ---------- Les trois mises déjà faites (celles des mouvements de matières sèches et de vin plus haut) ----------
-INSERT INTO bottlings (code, status, location, contractor, start_date, end_date, finished_article_id,
-                       planned_bottles, bottle_volume_cl, source_tank_id, produced_bottles, broken_bottles,
-                       wine_used_hl, lot_number, closed_at, closed_by, created_by)
-SELECT v.code, 'CLOSED', 'ON_SITE', 'Embouteillage Mobile Gironde', d.day, d.day, a.id,
-       v.planned, v.cl, t.id, v.produced, v.broken, v.wine,
-       'L' || to_char(d.day, 'YY') || to_char(d.day, 'DDD') || '-1',
-       d.day + interval '17 hours', '00000000-0000-4000-8000-000000000001'::uuid,
-       '00000000-0000-4000-8000-000000000001'::uuid
-FROM (VALUES
-          ('MB-0410', 'PF-PREST21-150',  'C02', 9, 1200, 150, 1200,   0, 18.00),
-          ('MB-0411', 'PF-BDXS23-75-FR', 'C12', 6, 4800,  75, 4800,   0, 36.00),
-          ('MB-0412', 'PF-BDXS23-75-JP', 'C12', 1, 6000,  75, 6000, 600, 45.00)
-     ) AS v(code, article, tank, days_ago, planned, cl, produced, broken, wine)
-         CROSS JOIN LATERAL (SELECT (date_trunc('day', now()) - v.days_ago * interval '1 day')::date AS day) d
-         JOIN articles a ON a.code = v.article
-         JOIN tanks t ON t.code = v.tank
+-- ---------- Appellations de démonstration (Bordeaux, sigle BX, vient de la migration V19) ----------
+INSERT INTO appellations (code, name)
+VALUES ('BXS', 'Bordeaux Supérieur'),
+       ('CDB', 'Côtes de Bourg'),
+       ('BCB', 'Blaye Côtes de Bordeaux')
 ON CONFLICT (code) DO NOTHING;
 
--- Le lot des bouteilles de chaque mise faite, et leur entrée en stock
+-- ---------- Les trois mises déjà faites (celles des mouvements de matières sèches et de vin plus haut) ----------
+-- Une production chacune, avec son numéro de lot : L + sigle + millésime + numéro d'ordre.
+INSERT INTO bottlings (code, status, location, contractor, start_date, end_date, created_by)
+SELECT v.code, 'CLOSED', 'ON_SITE', 'Embouteillage Mobile Gironde', d.day, d.day,
+       '00000000-0000-4000-8000-000000000001'::uuid
+FROM (VALUES ('MB-0410', 9), ('MB-0411', 6), ('MB-0412', 1)) AS v(code, days_ago)
+         CROSS JOIN LATERAL (SELECT (date_trunc('day', now()) - v.days_ago * interval '1 day')::date AS day) d
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO bottling_productions (bottling_id, status, start_date, end_date, slot, finished_article_id,
+                                  planned_bottles, bottle_volume_cl, source_tank_id, appellation_id, vintage,
+                                  lot_number, produced_bottles, broken_bottles, wine_used_hl, closed_at, closed_by)
+SELECT b.id, 'CLOSED', b.start_date, b.start_date, 'FULL_DAY', a.id, v.planned, v.cl, t.id, ap.id, v.vintage,
+       v.lot, v.produced, v.broken, v.wine, b.start_date + interval '17 hours',
+       '00000000-0000-4000-8000-000000000001'::uuid
+FROM (VALUES
+          ('MB-0410', 'PF-PREST21-150',  'C02', 1200, 150, 1200,   0, 18.00, 'BCB', 2021, 'LBCB2101'),
+          ('MB-0411', 'PF-BDXS23-75-FR', 'C12', 4800,  75, 4800,   0, 36.00, 'BXS', 2023, 'LBXS2301'),
+          ('MB-0412', 'PF-BDXS23-75-JP', 'C12', 6000,  75, 6000, 600, 45.00, 'BXS', 2023, 'LBXS2302')
+     ) AS v(bottling, article, tank, planned, cl, produced, broken, wine, appellation, vintage, lot)
+         JOIN bottlings b ON b.code = v.bottling
+         JOIN articles a ON a.code = v.article
+         JOIN tanks t ON t.code = v.tank
+         JOIN appellations ap ON ap.code = v.appellation
+WHERE NOT EXISTS (SELECT 1 FROM bottling_productions p WHERE p.bottling_id = b.id);
+
+-- Le lot des bouteilles de chaque production faite, et leur entrée en stock
 INSERT INTO lots (article_id, lot_number, notes)
-SELECT b.finished_article_id, b.lot_number, 'Mise ' || b.code
-FROM bottlings b
-WHERE b.created_by = '00000000-0000-4000-8000-000000000001'::uuid AND b.status = 'CLOSED'
+SELECT p.finished_article_id, p.lot_number, 'Mise ' || b.code
+FROM bottling_productions p
+         JOIN bottlings b ON b.id = p.bottling_id
+WHERE b.created_by = '00000000-0000-4000-8000-000000000001'::uuid AND p.status = 'CLOSED'
 ON CONFLICT (article_id, lot_number) DO NOTHING;
 
 INSERT INTO stock_movements (article_id, lot_id, type, quantity, occurred_at, reference, created_by)
-SELECT b.finished_article_id, l.id, 'PRODUCTION', b.produced_bottles, b.closed_at, 'Mise ' || b.code,
-       '00000000-0000-4000-8000-000000000001'::uuid
-FROM bottlings b
-         JOIN lots l ON l.article_id = b.finished_article_id AND l.lot_number = b.lot_number
-WHERE b.created_by = '00000000-0000-4000-8000-000000000001'::uuid AND b.status = 'CLOSED'
+SELECT p.finished_article_id, l.id, 'PRODUCTION', p.produced_bottles, p.closed_at,
+       'Mise ' || b.code || ' · lot ' || p.lot_number, '00000000-0000-4000-8000-000000000001'::uuid
+FROM bottling_productions p
+         JOIN bottlings b ON b.id = p.bottling_id
+         JOIN lots l ON l.article_id = p.finished_article_id AND l.lot_number = p.lot_number
+WHERE b.created_by = '00000000-0000-4000-8000-000000000001'::uuid AND p.status = 'CLOSED'
   AND NOT EXISTS (SELECT 1 FROM stock_movements m
                   WHERE m.type = 'PRODUCTION'
                     AND m.created_by = '00000000-0000-4000-8000-000000000001'::uuid);
@@ -340,43 +356,89 @@ ON CONFLICT ON CONSTRAINT stock_balances_article_lot_key DO NOTHING;
 -- ---------- Les mises à venir ----------
 -- MB-26-001 manque d'étiquettes Côtes de Bourg ; MB-26-003 manque de bouchons techniques et de capsules :
 -- toutes deux à moins de 10 jours, elles sont en alerte. MB-26-004 manque de capsules, mais plus tard.
-INSERT INTO bottlings (code, status, location, contractor, start_date, end_date, finished_article_id,
-                       planned_bottles, bottle_volume_cl, source_tank_id, wine_description, notes, created_by)
+-- MB-26-002 fait deux productions dans la journée : le Japon le matin, la France l'après-midi.
+INSERT INTO bottlings (code, status, location, contractor, start_date, end_date, notes, created_by)
 SELECT v.code, 'PLANNED', v.location, v.contractor,
        (date_trunc('day', now()) + v.start_in * interval '1 day')::date,
        (date_trunc('day', now()) + v.end_in * interval '1 day')::date,
-       a.id, v.bottles, 75, t.id, v.wine, v.notes, '00000000-0000-4000-8000-000000000001'::uuid
+       v.notes, '00000000-0000-4000-8000-000000000001'::uuid
 FROM (VALUES
-          ('MB-26-001', 'ON_SITE',     'Embouteillage Mobile Gironde', 2, 2, 'PF-CDB22-75',     3600, 'C11', NULL,
-           'Commande Tokyo Wine Import'),
-          ('MB-26-002', 'ON_SITE',     'Embouteillage Mobile Gironde', 5, 5, 'PF-BDXS23-75-JP', 6000, 'C12', NULL, NULL),
-          ('MB-26-003', 'ON_SITE',     'Embouteillage Mobile Gironde', 8, 9, 'PF-BDX23-75',    12000, 'C07', NULL,
-           'Mise sur deux jours'),
-          ('MB-26-004', 'AT_PRODUCER', 'Château des Graves Hautes',  16, 16, 'PF-BDXB24-75',    2400, NULL,
-           'Bordeaux Blanc 2024, embouteillé à la propriété', NULL)
-     ) AS v(code, location, contractor, start_in, end_in, article, bottles, tank, wine, notes)
-         JOIN articles a ON a.code = v.article
-         LEFT JOIN tanks t ON t.code = v.tank
+          ('MB-26-001', 'ON_SITE',     'Embouteillage Mobile Gironde', 2, 2,   'Commande Tokyo Wine Import'),
+          ('MB-26-002', 'ON_SITE',     'Embouteillage Mobile Gironde', 5, 5,   'Changement d''étiquette à midi'),
+          ('MB-26-003', 'ON_SITE',     'Embouteillage Mobile Gironde', 8, 9,   'Mise sur deux jours'),
+          ('MB-26-004', 'AT_PRODUCER', 'Château des Graves Hautes',  16, 16, NULL)
+     ) AS v(code, location, contractor, start_in, end_in, notes)
 ON CONFLICT (code) DO NOTHING;
 
-INSERT INTO bottling_materials (bottling_id, article_id, planned_quantity)
-SELECT b.id, a.id, v.quantity
+INSERT INTO bottling_productions (bottling_id, status, start_date, end_date, slot, finished_article_id,
+                                  planned_bottles, bottle_volume_cl, source_tank_id, wine_description,
+                                  appellation_id, vintage, lot_number, created_at)
+SELECT b.id, 'PLANNED',
+       (date_trunc('day', now()) + v.start_in * interval '1 day')::date,
+       (date_trunc('day', now()) + v.end_in * interval '1 day')::date,
+       v.slot, a.id, v.bottles, 75, t.id, v.wine, ap.id, v.vintage, v.lot,
+       now() + v.rank * interval '1 second'
 FROM (VALUES
-          ('MB-26-001', 'BTL-BDX-75',    3600), ('MB-26-001', 'BCH-LIE-4924', 3600),
-          ('MB-26-001', 'CAP-CRD-R75',   3600), ('MB-26-001', 'ETQ-CDB-22',   3600),
-          ('MB-26-001', 'CET-JP',        3600), ('MB-26-001', 'CRT-6-CCH',     600),
-          ('MB-26-001', 'CRX-6',          600), ('MB-26-001', 'PAL-EUR',         7),
-          ('MB-26-002', 'BTL-BDX-75',    6000), ('MB-26-002', 'BCH-TECH-4424', 6000),
-          ('MB-26-002', 'CAP-ETN-NR',    6000), ('MB-26-002', 'ETQ-BDXS-23',  6000),
-          ('MB-26-002', 'CET-JP',        6000), ('MB-26-002', 'CRT-6-CCH',    1000),
-          ('MB-26-002', 'CRX-6',         1000), ('MB-26-002', 'PAL-EUR',        11),
-          ('MB-26-003', 'BTL-BDX-75',   12000), ('MB-26-003', 'BCH-TECH-4424', 12000),
-          ('MB-26-003', 'CAP-ETN-NR',   12000), ('MB-26-003', 'CET-FR',      12000),
-          ('MB-26-003', 'CRT-6-CCH',     2000), ('MB-26-003', 'PAL-EUR',        22),
-          ('MB-26-004', 'BTL-BDX-75',    2400), ('MB-26-004', 'BCH-TECH-4424', 2400),
-          ('MB-26-004', 'CAP-ETN-NR',    2400)
-     ) AS v(bottling, article, quantity)
+          ('MB-26-001', 2, 2,   'FULL_DAY',  'PF-CDB22-75',      3600, 'C11', NULL,                                  'CDB', 2022, 'LCDB2201', 1),
+          ('MB-26-002', 5, 5,   'MORNING',   'PF-BDXS23-75-JP',  3000, 'C12', NULL,                                  'BXS', 2023, 'LBXS2303', 2),
+          ('MB-26-002', 5, 5,   'AFTERNOON', 'PF-BDXS23-75-FR',  3000, 'C12', NULL,                                  'BXS', 2023, 'LBXS2304', 3),
+          ('MB-26-003', 8, 9,   'FULL_DAY',  'PF-BDX23-75',     12000, 'C07', NULL,                                  'BX',  2023, 'LBX2301',  4),
+          ('MB-26-004', 16, 16, 'FULL_DAY',  'PF-BDXB24-75',     2400, NULL,  'Bordeaux Blanc 2024, embouteillé à la propriété', 'BX', 2024, 'LBX2401', 5)
+     ) AS v(bottling, start_in, end_in, slot, article, bottles, tank, wine, appellation, vintage, lot, rank)
          JOIN bottlings b ON b.code = v.bottling AND b.status = 'PLANNED'
+         JOIN articles a ON a.code = v.article
+         JOIN appellations ap ON ap.code = v.appellation
+         LEFT JOIN tanks t ON t.code = v.tank
+WHERE NOT EXISTS (SELECT 1 FROM bottling_productions p WHERE p.bottling_id = b.id)
+ON CONFLICT (lot_number) DO NOTHING;
+
+-- Une base de démo d'avant les productions : ses mises planifiées n'avaient pas de numéro de lot
+UPDATE bottling_productions p
+SET appellation_id = ap.id, vintage = v.vintage, lot_number = v.lot
+FROM (VALUES
+          ('MB-26-001', 'CDB', 2022, 'LCDB2201'),
+          ('MB-26-002', 'BXS', 2023, 'LBXS2303'),
+          ('MB-26-003', 'BX',  2023, 'LBX2301'),
+          ('MB-26-004', 'BX',  2024, 'LBX2401')
+     ) AS v(bottling, appellation, vintage, lot)
+         JOIN bottlings b ON b.code = v.bottling
+         JOIN appellations ap ON ap.code = v.appellation
+WHERE p.bottling_id = b.id AND p.lot_number IS NULL AND p.status = 'PLANNED'
+  AND b.created_by = '00000000-0000-4000-8000-000000000001'::uuid
+  AND NOT EXISTS (SELECT 1 FROM bottling_productions x WHERE x.lot_number = v.lot);
+
+-- Les compteurs suivent les numéros de la démo : la prochaine mise de Bordeaux Supérieur 2023 aura LBXS2305
+INSERT INTO lot_number_sequences (prefix, last_value)
+SELECT substring(p.lot_number FROM '^(L[A-Z]+[0-9]{2})'), max(substring(p.lot_number FROM '^L[A-Z]+[0-9]{2}([0-9]+)$')::int)
+FROM bottling_productions p
+WHERE p.lot_number ~ '^L[A-Z]+[0-9]{2}[0-9]+$'
+GROUP BY 1
+ON CONFLICT (prefix) DO UPDATE SET last_value = greatest(lot_number_sequences.last_value, EXCLUDED.last_value);
+
+INSERT INTO bottling_materials (production_id, article_id, planned_quantity)
+SELECT p.id, a.id, v.quantity
+FROM (VALUES
+          ('MB-26-001', 'PF-CDB22-75',     'BTL-BDX-75',    3600), ('MB-26-001', 'PF-CDB22-75',     'BCH-LIE-4924',  3600),
+          ('MB-26-001', 'PF-CDB22-75',     'CAP-CRD-R75',   3600), ('MB-26-001', 'PF-CDB22-75',     'ETQ-CDB-22',    3600),
+          ('MB-26-001', 'PF-CDB22-75',     'CET-JP',        3600), ('MB-26-001', 'PF-CDB22-75',     'CRT-6-CCH',      600),
+          ('MB-26-001', 'PF-CDB22-75',     'CRX-6',          600), ('MB-26-001', 'PF-CDB22-75',     'PAL-EUR',          7),
+          ('MB-26-002', 'PF-BDXS23-75-JP', 'BTL-BDX-75',    3000), ('MB-26-002', 'PF-BDXS23-75-JP', 'BCH-TECH-4424', 3000),
+          ('MB-26-002', 'PF-BDXS23-75-JP', 'CAP-ETN-NR',    3000), ('MB-26-002', 'PF-BDXS23-75-JP', 'ETQ-BDXS-23',   3000),
+          ('MB-26-002', 'PF-BDXS23-75-JP', 'CET-JP',        3000), ('MB-26-002', 'PF-BDXS23-75-JP', 'CRT-6-CCH',      500),
+          ('MB-26-002', 'PF-BDXS23-75-JP', 'CRX-6',          500), ('MB-26-002', 'PF-BDXS23-75-JP', 'PAL-EUR',          6),
+          ('MB-26-002', 'PF-BDXS23-75-FR', 'BTL-BDX-75',    3000), ('MB-26-002', 'PF-BDXS23-75-FR', 'BCH-TECH-4424', 3000),
+          ('MB-26-002', 'PF-BDXS23-75-FR', 'CAP-ETN-NR',    3000), ('MB-26-002', 'PF-BDXS23-75-FR', 'ETQ-BDXS-23',   3000),
+          ('MB-26-002', 'PF-BDXS23-75-FR', 'CET-FR',        3000), ('MB-26-002', 'PF-BDXS23-75-FR', 'CRT-6-CCH',      500),
+          ('MB-26-002', 'PF-BDXS23-75-FR', 'CRX-6',          500), ('MB-26-002', 'PF-BDXS23-75-FR', 'PAL-EUR',          5),
+          ('MB-26-003', 'PF-BDX23-75',     'BTL-BDX-75',   12000), ('MB-26-003', 'PF-BDX23-75',     'BCH-TECH-4424', 12000),
+          ('MB-26-003', 'PF-BDX23-75',     'CAP-ETN-NR',   12000), ('MB-26-003', 'PF-BDX23-75',     'CET-FR',       12000),
+          ('MB-26-003', 'PF-BDX23-75',     'CRT-6-CCH',     2000), ('MB-26-003', 'PF-BDX23-75',     'PAL-EUR',         22),
+          ('MB-26-004', 'PF-BDXB24-75',    'BTL-BDX-75',    2400), ('MB-26-004', 'PF-BDXB24-75',    'BCH-TECH-4424', 2400),
+          ('MB-26-004', 'PF-BDXB24-75',    'CAP-ETN-NR',    2400)
+     ) AS v(bottling, product, article, quantity)
+         JOIN bottlings b ON b.code = v.bottling AND b.status = 'PLANNED'
+         JOIN articles pf ON pf.code = v.product
+         JOIN bottling_productions p ON p.bottling_id = b.id AND p.finished_article_id = pf.id
          JOIN articles a ON a.code = v.article
 ON CONFLICT ON CONSTRAINT bottling_materials_unique_key DO NOTHING;
 
@@ -425,8 +487,8 @@ ON CONFLICT ON CONSTRAINT customer_order_lines_unique_key DO NOTHING;
 
 -- ---------- Les mises qui servent ces commandes ----------
 -- CC-26-004 · Bordeaux Blanc n'est servie par aucune mise : elle apparaît dans « À planifier ».
-INSERT INTO bottling_allocations (bottling_id, order_line_id, quantity)
-SELECT b.id, l.id, v.quantity
+INSERT INTO bottling_allocations (production_id, order_line_id, quantity)
+SELECT p.id, l.id, v.quantity
 FROM (VALUES
           ('MB-26-001', 'CC-26-001', 'PF-CDB22-75',     3600),
           ('MB-26-002', 'CC-26-001', 'PF-BDXS23-75-JP', 3000),
@@ -435,6 +497,7 @@ FROM (VALUES
          JOIN bottlings b ON b.code = v.bottling AND b.status = 'PLANNED'
          JOIN customer_orders o ON o.code = v.orders
          JOIN articles a ON a.code = v.article
+         JOIN bottling_productions p ON p.bottling_id = b.id AND p.finished_article_id = a.id
          JOIN customer_order_lines l ON l.order_id = o.id AND l.article_id = a.id
 ON CONFLICT ON CONSTRAINT bottling_allocations_unique_key DO NOTHING;
 
@@ -473,7 +536,8 @@ FROM (VALUES
          JOIN articles a ON a.code = v.article
          JOIN customer_order_lines l ON l.order_id = s.order_id AND l.article_id = a.id
          JOIN bottlings b ON b.code = v.bottling
-         JOIN lots lot ON lot.article_id = a.id AND lot.lot_number = b.lot_number
+         JOIN bottling_productions p ON p.bottling_id = b.id AND p.finished_article_id = a.id
+         JOIN lots lot ON lot.article_id = a.id AND lot.lot_number = p.lot_number
 WHERE NOT EXISTS (SELECT 1 FROM shipment_lines x WHERE x.shipment_id = s.id);
 
 -- La sortie de stock de l'expédition partie

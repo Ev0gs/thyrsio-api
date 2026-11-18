@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/** Ce qui a réellement été consommé lors de la mise, par article. Figé à la clôture. */
+/** Ce qui a réellement été consommé par une production, par article. Figé à la clôture. */
 @Entity
 @Table(name = "bottling_consumptions")
 public class BottlingConsumption {
@@ -15,8 +15,8 @@ public class BottlingConsumption {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "bottling_id", updatable = false)
-    private Bottling bottling;
+    @JoinColumn(name = "production_id", updatable = false)
+    private BottlingProduction production;
 
     @Column(nullable = false, updatable = false)
     private UUID articleId;
@@ -27,8 +27,8 @@ public class BottlingConsumption {
     protected BottlingConsumption() {
     }
 
-    BottlingConsumption(Bottling bottling, UUID articleId, BigDecimal quantity) {
-        this.bottling = bottling;
+    BottlingConsumption(BottlingProduction production, UUID articleId, BigDecimal quantity) {
+        this.production = production;
         this.articleId = articleId;
         this.quantity = quantity;
     }

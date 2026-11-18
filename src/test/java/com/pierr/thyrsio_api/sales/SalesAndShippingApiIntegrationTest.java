@@ -85,8 +85,8 @@ class SalesAndShippingApiIntegrationTest extends ApiIntegrationTest {
 
         planBottling(product, 6000, allocation(lineId, 3600))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.allocations[0].quantity").value(3600))
-                .andExpect(jsonPath("$.allocations[0].orderCode", startsWith("CC-")));
+                .andExpect(jsonPath("$.productions[0].allocations[0].quantity").value(3600))
+                .andExpect(jsonPath("$.productions[0].allocations[0].orderCode", startsWith("CC-")));
 
         getAsUser("/api/sales/orders/" + order)
                 .andExpect(jsonPath("$.lines[0].fromBottlings").value(3600))
@@ -270,9 +270,10 @@ class SalesAndShippingApiIntegrationTest extends ApiIntegrationTest {
 
     private ResultActions planBottling(String product, int bottles, String allocations) throws Exception {
         return postJson("/api/production/bottlings", """
-                {"location": "AT_PRODUCER", "startDate": "%s", "endDate": "%s", "finishedArticleId": "%s",
-                 "plannedBottles": %d, "bottleVolumeCl": 75, "materials": [], "allocations": [%s]}
-                """.formatted(TODAY.plusDays(3), TODAY.plusDays(3), product, bottles, allocations));
+                {"location": "AT_PRODUCER", "productions": [{"startDate": "%s", "finishedArticleId": "%s",
+                 "plannedBottles": %d, "bottleVolumeCl": 75, "appellationId": "%s", "vintage": 2024,
+                 "materials": [], "allocations": [%s]}]}
+                """.formatted(TODAY.plusDays(3), product, bottles, createAppellation(), allocations));
     }
 
     private static String shipmentLine(String lineId, String lotId, int quantity) {

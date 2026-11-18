@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/** Une matière sèche prévue pour une mise, et sa quantité. Ne se modifie qu'à travers la mise. */
+/** Une matière sèche prévue pour une production, et sa quantité. Ne se modifie qu'à travers la mise. */
 @Entity
 @Table(name = "bottling_materials")
 public class BottlingMaterial {
@@ -15,8 +15,8 @@ public class BottlingMaterial {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "bottling_id", updatable = false)
-    private Bottling bottling;
+    @JoinColumn(name = "production_id", updatable = false)
+    private BottlingProduction production;
 
     // UUID : l'article appartient au module Référentiel
     @Column(nullable = false, updatable = false)
@@ -28,8 +28,8 @@ public class BottlingMaterial {
     protected BottlingMaterial() {
     }
 
-    BottlingMaterial(Bottling bottling, UUID articleId, BigDecimal plannedQuantity) {
-        this.bottling = bottling;
+    BottlingMaterial(BottlingProduction production, UUID articleId, BigDecimal plannedQuantity) {
+        this.production = production;
         this.articleId = articleId;
         this.plannedQuantity = plannedQuantity;
     }

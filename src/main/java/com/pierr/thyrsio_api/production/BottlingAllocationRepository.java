@@ -10,14 +10,11 @@ import java.util.UUID;
 
 public interface BottlingAllocationRepository extends JpaRepository<BottlingAllocation, UUID> {
 
-    /** Les allocations de plusieurs mises, en une requête (la page du planning). */
-    List<BottlingAllocation> findByBottlingIdIn(Collection<UUID> bottlingIds);
-
-    /** Les allocations de ces lignes de commande, avec leur mise, mises annulées exclues. */
+    /** Les allocations de ces lignes de commande, avec leur production et leur mise, productions annulées exclues. */
     @Query("""
-            select a from BottlingAllocation a join fetch a.bottling b
-             where a.orderLineId in :lineIds and b.status <> :excluded
+            select a from BottlingAllocation a join fetch a.production p join fetch p.bottling
+             where a.orderLineId in :lineIds and p.status <> :excluded
             """)
     List<BottlingAllocation> findForOrderLines(@Param("lineIds") Collection<UUID> lineIds,
-                                               @Param("excluded") BottlingStatus excluded);
+                                               @Param("excluded") ProductionStatus excluded);
 }

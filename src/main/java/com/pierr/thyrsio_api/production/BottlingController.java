@@ -2,8 +2,7 @@ package com.pierr.thyrsio_api.production;
 
 import com.pierr.thyrsio_api.production.dto.BottlingRequest;
 import com.pierr.thyrsio_api.production.dto.BottlingResponse;
-import com.pierr.thyrsio_api.production.dto.BottlingRow;
-import com.pierr.thyrsio_api.production.dto.CloseBottlingRequest;
+import com.pierr.thyrsio_api.production.dto.CloseProductionRequest;
 import com.pierr.thyrsio_api.security.CurrentUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -36,10 +35,10 @@ public class BottlingController {
     }
 
     @Operation(summary = "Lister les mises (planning)",
-            description = "from / to (AAAA-MM-JJ, inclus) : les mises qui touchent cette période. "
-                    + "Chaque mise planifiée indique ses manquants et si elle est en alerte (manquants à moins de 10 jours).")
+            description = "from / to (AAAA-MM-JJ, inclus) : les mises qui touchent cette période, avec leurs productions. "
+                    + "Chaque production planifiée indique ses manquants et si elle est en alerte (manquants à moins de 10 jours).")
     @GetMapping
-    public Page<BottlingRow> list(
+    public Page<BottlingResponse> list(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) BottlingStatus status,
@@ -47,16 +46,18 @@ public class BottlingController {
         return bottlingService.list(from, to, status, pageable);
     }
 
-    @Operation(summary = "Fiche d'une mise", description = "Avec ses matières : stock, réservé par les mises précédentes, manquant.")
+    @Operation(summary = "Fiche d'une mise", description = "Avec ses productions et leurs matières : stock, réservé par les productions précédentes, manquant.")
     @ApiResponse(responseCode = "404", description = "Mise introuvable")
     @GetMapping("/{id}")
     public BottlingResponse get(@PathVariable UUID id) {
         return bottlingService.get(id);
     }
 
-    @Operation(summary = "Planifier une mise")
+    @Operation(summary = "Planifier une mise et ses productions",
+            description = "Chaque production reçoit aussitôt son numéro de lot : L + sigle de l'appellation + "
+                    + "millésime + numéro d'ordre (LBX2401), jamais réutilisé.")
     @ApiResponse(responseCode = "201", description = "Mise planifiée (code MB-26-001...)")
-    @ApiResponse(responseCode = "400", description = "Données invalides : dates, produit fini, cuve, matières")
+    @ApiResponse(responseCode = "400", description = "Données invalides : dates, produit fini, cuve, appellation, matières")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public BottlingResponse create(@Valid @RequestBody BottlingRequest request,
@@ -64,28 +65,40 @@ public class BottlingController {
         return bottlingService.create(request, CurrentUser.from(jwt).keycloakId());
     }
 
-    @Operation(summary = "Modifier une mise planifiée", description = "Remplace le planning et la liste des matières.")
-    @ApiResponse(responseCode = "409", description = "Mise plus planifiée, ou modifiée entre-temps")
+    @Operation(summary = "Modifier une mise",
+            description = "Met à jour ses productions planifiées (avec id), en ajoute (sans id), retire celles qui "
+                    + "manquent. Les productions clôturées ou annulées ne changent pas. Changer l'appellation ou le "
+                    + "millésime d'une production lui donne un nouveau numéro de lot ; l'ancien ne resservira pas.")
+    @ApiResponse(responseCode = "409", description = "Mise clôturée ou annulée, ou modifiée entre-temps")
     @PutMapping("/{id}")
     public BottlingResponse update(@PathVariable UUID id, @Valid @RequestBody BottlingRequest request) {
         return bottlingService.update(id, request);
     }
 
-    @Operation(summary = "Annuler une mise planifiée", description = "Aucun effet sur le stock ni sur les cuves.")
-    @ApiResponse(responseCode = "409", description = "Mise plus planifiée")
+    @Operation(summary = "Annuler une mise", description = "Annule les productions qui restent à faire ; "
+            + "celles déjà clôturées restent. Aucun effet sur le stock ni sur les cuves.")
+    @ApiResponse(responseCode = "409", description = "Mise clôturée ou annulée")
     @PostMapping("/{id}/cancel")
     public BottlingResponse cancel(@PathVariable UUID id) {
         return bottlingService.cancel(id);
     }
 
-    @Operation(summary = "Clôturer une mise avec le réel",
-            description = "Consomme les matières sèches saisies, tire le vin de la cuve (mise chez nous), "
-                    + "crée le lot des bouteilles produites et les fait entrer en stock. Tout ou rien.")
-    @ApiResponse(responseCode = "400", description = "Données invalides (lot, décimales, vin)")
-    @ApiResponse(responseCode = "409", description = "Stock ou vin insuffisant, mise pas encore commencée ou plus planifiée")
-    @PostMapping("/{id}/close")
-    public BottlingResponse close(@PathVariable UUID id, @Valid @RequestBody CloseBottlingRequest request,
-                                  @Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
-        return bottlingService.close(id, request, CurrentUser.from(jwt).keycloakId());
+    @Operation(summary = "Annuler une production", description = "Son numéro de lot ne sera pas réutilisé.")
+    @ApiResponse(responseCode = "409", description = "Production plus planifiée")
+    @PostMapping("/{id}/productions/{productionId}/cancel")
+    public BottlingResponse cancelProduction(@PathVariable UUID id, @PathVariable UUID productionId) {
+        return bottlingService.cancelProduction(id, productionId);
+    }
+
+    @Operation(summary = "Clôturer une production avec le réel",
+            description = "Consomme les matières sèches saisies, tire le vin de la cuve (mise chez nous) et fait "
+                    + "entrer les bouteilles en stock sous le numéro de lot de la production. Tout ou rien.")
+    @ApiResponse(responseCode = "400", description = "Données invalides (décimales, vin)")
+    @ApiResponse(responseCode = "409", description = "Stock ou vin insuffisant, production pas encore commencée ou plus planifiée")
+    @PostMapping("/{id}/productions/{productionId}/close")
+    public BottlingResponse closeProduction(@PathVariable UUID id, @PathVariable UUID productionId,
+                                            @Valid @RequestBody CloseProductionRequest request,
+                                            @Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
+        return bottlingService.closeProduction(id, productionId, request, CurrentUser.from(jwt).keycloakId());
     }
 }

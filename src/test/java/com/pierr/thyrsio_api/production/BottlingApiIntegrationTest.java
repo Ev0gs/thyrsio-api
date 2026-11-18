@@ -8,6 +8,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -37,12 +38,21 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void a_bottling_has_at_least_one_production() throws Exception {
+        postJson("/api/production/bottlings", """
+                {"location": "AT_PRODUCER", "productions": []}
+                """).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail", containsString("au moins une production")));
+    }
+
+    @Test
     void planned_bottling_gets_a_code_and_the_wine_it_needs() throws Exception {
         String json = body(plan(createArticle("PRODUIT_FINI"), "AT_PRODUCER", null, TODAY.plusDays(3), 6000, "[]")
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code", matchesPattern("MB-\\d{2}-\\d{3}")))
-                .andExpect(jsonPath("$.status").value("PLANNED")));
-        assertThat(decimal(json, "$.wineNeededHl")).isEqualByComparingTo("45");  // 6 000 × 75 cl
+                .andExpect(jsonPath("$.status").value("PLANNED"))
+                .andExpect(jsonPath("$.plannedBottles").value(6000)));
+        assertThat(decimal(json, "$.productions[0].wineNeededHl")).isEqualByComparingTo("45");  // 6 000 × 75 cl
     }
 
     @Test
@@ -64,8 +74,8 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
         String json = body(getAsUser("/api/production/bottlings/" + second)
                 .andExpect(jsonPath("$.shortageCount").value(1))
                 .andExpect(jsonPath("$.alert").value(true)));
-        assertThat(decimal(json, "$.materials[0].reservedBefore")).isEqualByComparingTo("4000");
-        assertThat(decimal(json, "$.materials[0].shortageQuantity")).isEqualByComparingTo("2000");
+        assertThat(decimal(json, "$.productions[0].materials[0].reservedBefore")).isEqualByComparingTo("4000");
+        assertThat(decimal(json, "$.productions[0].materials[0].shortageQuantity")).isEqualByComparingTo("2000");
 
         getAsUser("/api/production/bottlings/" + later)
                 .andExpect(jsonPath("$.shortageCount").value(1))
@@ -73,20 +83,56 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void the_morning_production_reserves_before_the_afternoon_one() throws Exception {
+        String label = createArticle("ETIQUETTE");
+        move(label, null, "RECEPTION", "1000").andExpect(status().isCreated());
+        String morningProduct = createArticle("PRODUIT_FINI");
+        String afternoonProduct = createArticle("PRODUIT_FINI");
+        String appellation = createAppellation();
+
+        // L'après-midi est saisie en premier : l'ordre de la journée l'emporte quand même
+        String json = body(postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                production(null, afternoonProduct, null, TODAY.plusDays(2), "AFTERNOON", 800, appellation, 2023,
+                        materials(label, "800")),
+                production(null, morningProduct, null, TODAY.plusDays(2), "MORNING", 600, appellation, 2023,
+                        materials(label, "600"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.startDate").value(TODAY.plusDays(2).toString()))
+                .andExpect(jsonPath("$.endDate").value(TODAY.plusDays(2).toString()))
+                .andExpect(jsonPath("$.plannedBottles").value(1400))
+                .andExpect(jsonPath("$.productions", hasSize(2)))
+                .andExpect(jsonPath("$.productions[0].slot").value("MORNING"))
+                .andExpect(jsonPath("$.productions[0].finishedArticleId").value(morningProduct))
+                .andExpect(jsonPath("$.productions[1].slot").value("AFTERNOON")));
+        // Le matin prend 600 des 1 000 étiquettes ; il en manque 400 l'après-midi
+        assertThat(decimal(json, "$.productions[0].materials[0].shortageQuantity")).isEqualByComparingTo("0");
+        assertThat(decimal(json, "$.productions[1].materials[0].shortageQuantity")).isEqualByComparingTo("400");
+    }
+
+    @Test
     void updating_a_bottling_replaces_its_materials() throws Exception {
         String label = createArticle("ETIQUETTE");
         String carton = createArticle("CARTON");
         String product = createArticle("PRODUIT_FINI");
-        String bottling = id(plan(product, "AT_PRODUCER", null, TODAY.plusDays(2), 600,
-                materials(label, "600") + "," + materials(carton, "100")));
+        String appellation = createAppellation();
+        String json = body(postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                production(null, product, null, TODAY.plusDays(2), "FULL_DAY", 600, appellation, 2024,
+                        materials(label, "600") + "," + materials(carton, "100"))))
+                .andExpect(status().isCreated()));
+        String bottling = JsonPath.read(json, "$.id");
+        String production = JsonPath.read(json, "$.productions[0].id");
+        String lotNumber = JsonPath.read(json, "$.productions[0].lotNumber");
 
-        // Même étiquette avec une autre quantité, le carton retiré
-        putJson("/api/production/bottlings/" + bottling,
-                request(product, "AT_PRODUCER", null, TODAY.plusDays(2), 1200, "[" + material(label, "1200") + "]"))
+        // Même étiquette avec une autre quantité, le carton retiré ; la production garde son numéro de lot
+        putJson("/api/production/bottlings/" + bottling, bottling("AT_PRODUCER",
+                production(production, product, null, TODAY.plusDays(2), "FULL_DAY", 1200, appellation, 2024,
+                        materials(label, "1200"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.plannedBottles").value(1200))
-                .andExpect(jsonPath("$.materials", hasSize(1)))
-                .andExpect(jsonPath("$.materials[0].plannedQuantity").value(1200));
+                .andExpect(jsonPath("$.productions[0].id").value(production))
+                .andExpect(jsonPath("$.productions[0].lotNumber").value(lotNumber))
+                .andExpect(jsonPath("$.productions[0].materials", hasSize(1)))
+                .andExpect(jsonPath("$.productions[0].materials[0].plannedQuantity").value(1200));
     }
 
     @Test
@@ -96,9 +142,77 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
 
         postEmpty("/api/production/bottlings/" + bottling + "/cancel")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("CANCELLED"));
-        putJson("/api/production/bottlings/" + bottling, request(product, "AT_PRODUCER", null, TODAY, 200, "[]"))
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.productions[0].status").value("CANCELLED"));
+        putJson("/api/production/bottlings/" + bottling, bottling("AT_PRODUCER",
+                production(null, product, null, TODAY, "FULL_DAY", 200, createAppellation(), 2024, "")))
                 .andExpect(status().isConflict());
+    }
+
+    // ==================== Numéros de lot ====================
+
+    @Test
+    void each_production_gets_its_lot_number_when_planned() throws Exception {
+        String appellation = createAppellation();
+        List<String> codes = JsonPath.read(body(getAsUser("/api/referentiel/appellations")),
+                "$[?(@.id == '" + appellation + "')].code");
+        String code = codes.getFirst();
+        String product = createArticle("PRODUIT_FINI");
+
+        // L + sigle + millésime + numéro d'ordre, avant même le début de la mise
+        String json = body(postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                production(null, product, null, TODAY.plusDays(10), "MORNING", 600, appellation, 2024, ""),
+                production(null, product, null, TODAY.plusDays(10), "AFTERNOON", 600, appellation, 2024, ""),
+                production(null, product, null, TODAY.plusDays(11), "FULL_DAY", 600, appellation, null, "")))
+                .andExpect(status().isCreated()));
+        List<String> lots = JsonPath.read(json, "$.productions[*].lotNumber");
+        assertThat(lots).containsExactly("L" + code + "2401", "L" + code + "2402", "L" + code + "NM01");
+
+        // Une autre mise, le même vin : la suite du compteur
+        String next = body(postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                production(null, product, null, TODAY.plusDays(20), "FULL_DAY", 600, appellation, 2024, "")))
+                .andExpect(status().isCreated()));
+        assertThat(JsonPath.<String>read(next, "$.productions[0].lotNumber")).isEqualTo("L" + code + "2403");
+    }
+
+    @Test
+    void a_lot_number_is_never_given_twice() throws Exception {
+        String appellation = createAppellation();
+        String product = createArticle("PRODUIT_FINI");
+        String json = body(postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                production(null, product, null, TODAY.plusDays(10), "FULL_DAY", 600, appellation, 2023, ""),
+                production(null, product, null, TODAY.plusDays(11), "FULL_DAY", 600, appellation, 2023, "")))
+                .andExpect(status().isCreated()));
+        String bottling = JsonPath.read(json, "$.id");
+        String first = JsonPath.read(json, "$.productions[0].id");
+        String firstLot = JsonPath.read(json, "$.productions[0].lotNumber");
+        String secondLot = JsonPath.read(json, "$.productions[1].lotNumber");
+
+        // La seconde production est retirée, puis une autre ajoutée : elle ne reprend pas le numéro libéré
+        String updated = body(putJson("/api/production/bottlings/" + bottling, bottling("AT_PRODUCER",
+                production(first, product, null, TODAY.plusDays(10), "FULL_DAY", 600, appellation, 2023, ""),
+                production(null, product, null, TODAY.plusDays(12), "FULL_DAY", 600, appellation, 2023, "")))
+                .andExpect(status().isOk()));
+        List<String> lots = JsonPath.read(updated, "$.productions[*].lotNumber");
+        assertThat(lots).hasSize(2).contains(firstLot).doesNotContain(secondLot);
+
+        // Changer le millésime donne un nouveau numéro ; l'ancien reste perdu
+        String changed = body(putJson("/api/production/bottlings/" + bottling, bottling("AT_PRODUCER",
+                production(first, product, null, TODAY.plusDays(10), "FULL_DAY", 600, appellation, 2022, "")))
+                .andExpect(status().isOk()));
+        String newLot = JsonPath.read(changed, "$.productions[0].lotNumber");
+        assertThat(newLot).endsWith("2201").isNotEqualTo(firstLot);
+    }
+
+    @Test
+    void appellation_codes_are_letters_only() throws Exception {
+        postJson("/api/referentiel/appellations", """
+                {"code": "BX2", "name": "%s"}
+                """.formatted(unique("Appellation"))).andExpect(status().isBadRequest());
+        // Bordeaux / BX vient de la migration
+        postJson("/api/referentiel/appellations", """
+                {"code": "bx", "name": "%s"}
+                """.formatted(unique("Appellation"))).andExpect(status().isConflict());
     }
 
     // ==================== Clôture ====================
@@ -112,27 +226,77 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
         String product = createArticle("PRODUIT_FINI");
         String tank = tankWithWine("10");
 
-        String bottling = id(plan(product, "ON_SITE", tank, TODAY, 1200,
-                materials(cork, "1200") + "," + materials(label, "1200")));
+        String planned = body(plan(product, "ON_SITE", tank, TODAY, 1200,
+                materials(cork, "1200") + "," + materials(label, "1200")).andExpect(status().isCreated()));
+        String bottling = JsonPath.read(planned, "$.id");
+        String lotNumber = JsonPath.read(planned, "$.productions[0].lotNumber");
 
-        String json = body(close(bottling, 880, 20, "6.6", consumption(cork, "900"), consumption(label, "900"))
+        close(planned, 0, 880, 20, "6.6", consumption(cork, "900"), consumption(label, "900"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CLOSED"))
-                .andExpect(jsonPath("$.lotNumber", matchesPattern("L\\d{5}-\\d+")))
-                .andExpect(jsonPath("$.consumptions", hasSize(2))));
+                .andExpect(jsonPath("$.producedBottles").value(880))
+                .andExpect(jsonPath("$.productions[0].status").value("CLOSED"))
+                .andExpect(jsonPath("$.productions[0].lotNumber").value(lotNumber))
+                .andExpect(jsonPath("$.productions[0].consumptions", hasSize(2)));
 
         assertThat(stockOf(cork)).isEqualByComparingTo("100");
         assertThat(stockOf(label)).isEqualByComparingTo("100");
         assertThat(stockOf(product)).isEqualByComparingTo("880");
         assertThat(decimal(body(getAsUser("/api/cuverie/tanks/" + tank)), "$.volumeHl")).isEqualByComparingTo("3.4");
 
-        // Le lot des bouteilles porte le numéro de la mise
-        String lotNumber = JsonPath.read(json, "$.lotNumber");
+        // Les bouteilles entrent en stock sous le numéro attribué à la planification
         getAsUser("/api/stock/lots?articleId=" + product)
                 .andExpect(jsonPath("$[0].lotNumber").value(lotNumber));
 
         // Une seconde clôture est refusée
-        close(bottling, 880, 0, "1").andExpect(status().isConflict());
+        close(planned, 0, 880, 0, "1").andExpect(status().isConflict());
+        getAsUser("/api/production/bottlings/" + bottling).andExpect(jsonPath("$.status").value("CLOSED"));
+    }
+
+    @Test
+    void the_morning_production_closes_before_the_afternoon_one() throws Exception {
+        String morningProduct = createArticle("PRODUIT_FINI");
+        String afternoonProduct = createArticle("PRODUIT_FINI");
+        String appellation = createAppellation();
+        String planned = body(postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                production(null, morningProduct, null, TODAY, "MORNING", 600, appellation, 2023, ""),
+                production(null, afternoonProduct, null, TODAY, "AFTERNOON", 900, appellation, 2023, "")))
+                .andExpect(status().isCreated()));
+
+        // Le matin est fait : la mise est en cours
+        String inProgress = body(close(planned, 0, 590, 10, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.productions[0].status").value("CLOSED"))
+                .andExpect(jsonPath("$.productions[1].status").value("PLANNED")));
+        assertThat(stockOf(morningProduct)).isEqualByComparingTo("590");
+
+        // L'après-midi aussi : la mise est clôturée
+        close(inProgress, 1, 900, 0, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.producedBottles").value(1490));
+        assertThat(stockOf(afternoonProduct)).isEqualByComparingTo("900");
+    }
+
+    @Test
+    void cancelling_a_bottling_keeps_what_was_already_closed() throws Exception {
+        String appellation = createAppellation();
+        String done = createArticle("PRODUIT_FINI");
+        String planned = body(postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                production(null, done, null, TODAY, "MORNING", 100, appellation, 2023, ""),
+                production(null, createArticle("PRODUIT_FINI"), null, TODAY.plusDays(1), "FULL_DAY", 100,
+                        appellation, 2023, "")))
+                .andExpect(status().isCreated()));
+        String bottling = JsonPath.read(planned, "$.id");
+        close(planned, 0, 100, 0, null).andExpect(status().isOk());
+
+        postEmpty("/api/production/bottlings/" + bottling + "/cancel")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
+                .andExpect(jsonPath("$.productions[0].status").value("CLOSED"))
+                .andExpect(jsonPath("$.productions[1].status").value("CANCELLED"));
+        assertThat(stockOf(done)).isEqualByComparingTo("100");
     }
 
     @Test
@@ -141,17 +305,18 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
         move(label, null, "RECEPTION", "1000").andExpect(status().isCreated());
         String product = createArticle("PRODUIT_FINI");
         String tank = tankWithWine("10");
-        String bottling = id(plan(product, "ON_SITE", tank, TODAY, 500, materials(label, "500")));
+        String planned = body(plan(product, "ON_SITE", tank, TODAY, 500, materials(label, "500"))
+                .andExpect(status().isCreated()));
 
         // Deux lignes pour la même étiquette : refusé (il n'y a plus de lots à distinguer)
-        close(bottling, 500, 0, "3.75", consumption(label, "300"), consumption(label, "200"))
+        close(planned, 0, 500, 0, "3.75", consumption(label, "300"), consumption(label, "200"))
                 .andExpect(status().isBadRequest());
 
-        close(bottling, 500, 0, "3.75", consumption(label, "500"))
+        close(planned, 0, 500, 0, "3.75", consumption(label, "500"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.consumptions[0].quantity").value(500))
-                .andExpect(jsonPath("$.consumptions[0].lotNumber").doesNotExist())
-                .andExpect(jsonPath("$.materials[0].lotTracked").doesNotExist());
+                .andExpect(jsonPath("$.productions[0].consumptions[0].quantity").value(500))
+                .andExpect(jsonPath("$.productions[0].consumptions[0].lotNumber").doesNotExist())
+                .andExpect(jsonPath("$.productions[0].materials[0].lotTracked").doesNotExist());
         assertThat(stockOf(label)).isEqualByComparingTo("500");
     }
 
@@ -161,9 +326,11 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
         move(label, null, "RECEPTION", "100").andExpect(status().isCreated());
         String product = createArticle("PRODUIT_FINI");
         String tank = tankWithWine("10");
-        String bottling = id(plan(product, "ON_SITE", tank, TODAY, 500, materials(label, "500")));
+        String planned = body(plan(product, "ON_SITE", tank, TODAY, 500, materials(label, "500"))
+                .andExpect(status().isCreated()));
+        String bottling = JsonPath.read(planned, "$.id");
 
-        close(bottling, 500, 0, "3.75", consumption(label, "500"))
+        close(planned, 0, 500, 0, "3.75", consumption(label, "500"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail", containsString("Stock insuffisant")));
 
@@ -175,21 +342,23 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
-    void a_future_bottling_cannot_be_closed() throws Exception {
-        String bottling = id(plan(createArticle("PRODUIT_FINI"), "AT_PRODUCER", null, TODAY.plusDays(5), 100, "[]"));
+    void a_future_production_cannot_be_closed() throws Exception {
+        String planned = body(plan(createArticle("PRODUIT_FINI"), "AT_PRODUCER", null, TODAY.plusDays(5), 100, "[]")
+                .andExpect(status().isCreated()));
 
-        close(bottling, 100, 0, null).andExpect(status().isConflict());
+        close(planned, 0, 100, 0, null).andExpect(status().isConflict());
     }
 
     @Test
     void list_returns_the_bottlings_touching_the_period() throws Exception {
         String product = createArticle("PRODUIT_FINI");
         // Du J+40 au J+42 : comprise dans une période qui commence le J+41
-        postJson("/api/production/bottlings", request(product, "AT_PRODUCER", null, TODAY.plusDays(40),
-                TODAY.plusDays(42), 100, "[]")).andExpect(status().isCreated());
+        postJson("/api/production/bottlings", bottling("AT_PRODUCER",
+                productionOver(product, TODAY.plusDays(40), TODAY.plusDays(42), 100, createAppellation())))
+                .andExpect(status().isCreated());
 
         String json = body(getAsUser("/api/production/bottlings?from=" + TODAY.plusDays(41) + "&to=" + TODAY.plusDays(45)));
-        List<String> products = JsonPath.read(json, "$.content[*].finishedArticleId");
+        List<String> products = JsonPath.read(json, "$.content[*].productions[*].finishedArticleId");
         assertThat(products).contains(product);
     }
 
@@ -209,35 +378,44 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
 
     // ==================== Méthodes utilitaires ====================
 
+    /** Une mise d'une seule production, sur une journée. */
     private ResultActions plan(String product, String location, String tankId, LocalDate start, int bottles,
                                String materials) throws Exception {
-        String list = materials.startsWith("[") ? materials : "[" + materials + "]";
-        return postJson("/api/production/bottlings", request(product, location, tankId, start, bottles, list));
+        String list = materials.startsWith("[") ? materials.substring(1, materials.length() - 1) : materials;
+        return postJson("/api/production/bottlings", bottling(location,
+                production(null, product, tankId, start, "FULL_DAY", bottles, createAppellation(), 2024, list)));
     }
 
-    private static String request(String product, String location, String tankId, LocalDate start, int bottles,
-                                  String materials) {
-        return request(product, location, tankId, start, start, bottles, materials);
-    }
-
-    private static String request(String product, String location, String tankId, LocalDate start, LocalDate end,
-                                  int bottles, String materials) {
-        String tank = tankId == null ? "null" : "\"" + tankId + "\"";
+    private static String bottling(String location, String... productions) {
         return """
-                {"location": "%s", "contractor": "Embouteillage Test", "startDate": "%s", "endDate": "%s",
-                 "finishedArticleId": "%s", "plannedBottles": %d, "bottleVolumeCl": 75,
-                 "sourceTankId": %s, "materials": %s}
-                """.formatted(location, start, end, product, bottles, tank, materials);
+                {"location": "%s", "contractor": "Embouteillage Test", "productions": [%s]}
+                """.formatted(location, String.join(",", productions));
     }
 
-    private static String material(String articleId, String quantity) {
+    private static String production(String id, String product, String tankId, LocalDate day, String slot,
+                                     int bottles, String appellationId, Integer vintage, String materials) {
+        return """
+                {"id": %s, "startDate": "%s", "slot": "%s", "finishedArticleId": "%s", "plannedBottles": %d,
+                 "bottleVolumeCl": 75, "sourceTankId": %s, "appellationId": "%s", "vintage": %s, "materials": [%s]}
+                """.formatted(quoted(id), day, slot, product, bottles, quoted(tankId), appellationId, vintage, materials);
+    }
+
+    private static String productionOver(String product, LocalDate start, LocalDate end, int bottles,
+                                         String appellationId) {
+        return """
+                {"startDate": "%s", "endDate": "%s", "finishedArticleId": "%s", "plannedBottles": %d,
+                 "bottleVolumeCl": 75, "appellationId": "%s", "vintage": 2024, "materials": []}
+                """.formatted(start, end, product, bottles, appellationId);
+    }
+
+    private static String quoted(String value) {
+        return value == null ? "null" : "\"" + value + "\"";
+    }
+
+    /** Une matière, ou plusieurs séparées par des virgules par l'appelant. */
+    private static String materials(String articleId, String quantity) {
         return """
                 {"articleId": "%s", "plannedQuantity": %s}""".formatted(articleId, quantity);
-    }
-
-    /** Une ou plusieurs matières, séparées par des virgules par l'appelant. */
-    private static String materials(String articleId, String quantity) {
-        return material(articleId, quantity);
     }
 
     private static String consumption(String articleId, String quantity) {
@@ -245,9 +423,12 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
                 {"articleId": "%s", "quantity": %s}""".formatted(articleId, quantity);
     }
 
-    private ResultActions close(String bottlingId, int produced, int broken, String wineHl, String... consumptions)
-            throws Exception {
-        return postJson("/api/production/bottlings/" + bottlingId + "/close", """
+    /** Clôture la production n° index (dans l'ordre de la journée) de la mise décrite par ce JSON. */
+    private ResultActions close(String bottlingJson, int index, int produced, int broken, String wineHl,
+                                String... consumptions) throws Exception {
+        String bottling = JsonPath.read(bottlingJson, "$.id");
+        String production = JsonPath.read(bottlingJson, "$.productions[" + index + "].id");
+        return postJson("/api/production/bottlings/" + bottling + "/productions/" + production + "/close", """
                 {"producedBottles": %d, "brokenBottles": %d, "wineUsedHl": %s, "consumptions": [%s]}
                 """.formatted(produced, broken, wineHl == null ? "null" : wineHl, String.join(",", consumptions)));
     }

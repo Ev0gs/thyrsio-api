@@ -107,6 +107,18 @@ public abstract class ApiIntegrationTest {
                 .andExpect(status().isCreated())), "$.id");
     }
 
+    /** Une appellation au sigle de 4 lettres tiré au hasard : son compteur de numéros de lot part de 01. */
+    protected String createAppellation() throws Exception {
+        StringBuilder code = new StringBuilder();
+        java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
+        for (int i = 0; i < 4; i++) {
+            code.append((char) ('A' + random.nextInt(26)));
+        }
+        return JsonPath.read(body(postJson("/api/referentiel/appellations", """
+                {"code": "%s", "name": "%s"}
+                """.formatted(code, unique("Appellation"))).andExpect(status().isCreated())), "$.id");
+    }
+
     protected String createLot(String articleId, String lotNumber) throws Exception {
         String json = """
                 {"articleId": "%s", "lotNumber": "%s"}

@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 
 import java.util.UUID;
 
-/** Une part de la mise réservée à une ligne de commande. Ne se modifie qu'à travers la mise. */
+/** Une part d'une production réservée à une ligne de commande. Ne se modifie qu'à travers la mise. */
 @Entity
 @Table(name = "bottling_allocations")
 public class BottlingAllocation {
@@ -14,8 +14,8 @@ public class BottlingAllocation {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "bottling_id", updatable = false)
-    private Bottling bottling;
+    @JoinColumn(name = "production_id", updatable = false)
+    private BottlingProduction production;
 
     // UUID : la ligne de commande appartient au module Ventes
     @Column(nullable = false, updatable = false)
@@ -27,15 +27,15 @@ public class BottlingAllocation {
     protected BottlingAllocation() {
     }
 
-    BottlingAllocation(Bottling bottling, UUID orderLineId, int quantity) {
-        this.bottling = bottling;
+    BottlingAllocation(BottlingProduction production, UUID orderLineId, int quantity) {
+        this.production = production;
         this.orderLineId = orderLineId;
         this.quantity = quantity;
     }
 
     public UUID getId() { return id; }
 
-    public Bottling getBottling() { return bottling; }
+    public BottlingProduction getProduction() { return production; }
 
     public UUID getOrderLineId() { return orderLineId; }
 
