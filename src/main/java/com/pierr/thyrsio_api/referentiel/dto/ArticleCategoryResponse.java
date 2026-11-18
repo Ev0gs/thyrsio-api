@@ -9,7 +9,6 @@ public record ArticleCategoryResponse(
         String code,
         String label,
         String defaultUnitCode,
-        Boolean lotTracked,
         Boolean regulated,
         Boolean active
 ) {
@@ -19,7 +18,6 @@ public record ArticleCategoryResponse(
                 articleCategory.getCode(),
                 articleCategory.getLabel(),
                 articleCategory.getDefaultUnit().getCode(),
-                articleCategory.isLotTracked(),
                 articleCategory.isRegulated(),
                 articleCategory.isActive()
         );

@@ -7,7 +7,6 @@ import com.pierr.thyrsio_api.referentiel.dto.CreateArticleRequest;
 import com.pierr.thyrsio_api.stock.dto.AddInventoryLineRequest;
 import com.pierr.thyrsio_api.stock.dto.CountInventoryLineRequest;
 import com.pierr.thyrsio_api.stock.dto.CreateInventoryRequest;
-import com.pierr.thyrsio_api.stock.dto.CreateLotRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Pageable;
@@ -33,7 +32,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class StockConcurrencyTest extends ApiIntegrationTest {
 
     @Autowired StockService stockService;
-    @Autowired LotService lotService;
     @Autowired ArticleService articleService;
     @Autowired InventoryService inventoryService;
     @Autowired InventoryRepository inventoryRepository;
@@ -49,8 +47,7 @@ class StockConcurrencyTest extends ApiIntegrationTest {
     void parallel_consumptions_never_make_stock_negative() throws Exception {
         UUID article = articleService.create(new CreateArticleRequest(
                 unique("BOUCHON"), "Bouchon concurrence", "BOUCHON", null, null, null, null)).id();
-        UUID lot = lotService.create(new CreateLotRequest(article, "L-CONC", null, null)).id();
-        stockService.record(command(article, lot, MovementType.RECEPTION, "5"));
+        stockService.record(command(article, null, MovementType.RECEPTION, "5"));
 
         int attempts = 8; // reste sous la taille du pool de connexions (10 par défaut)
         ExecutorService pool = Executors.newFixedThreadPool(attempts);
@@ -61,7 +58,7 @@ class StockConcurrencyTest extends ApiIntegrationTest {
                 results.add(pool.submit(() -> {
                     startSignal.await();  // tous les threads attendent le top départ
                     try {
-                        stockService.record(command(article, lot, MovementType.CONSUMPTION, "1"));
+                        stockService.record(command(article, null, MovementType.CONSUMPTION, "1"));
                         return true;
                     } catch (BusinessRuleException insufficientStock) {
                         return false;

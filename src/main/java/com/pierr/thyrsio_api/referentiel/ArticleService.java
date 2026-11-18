@@ -100,11 +100,11 @@ public class ArticleService {
         Article article = findArticle(id);
         ArticleCategory newCategory = findActiveCategory(request.categoryCode());
 
-        // Seul le passage "suivi par lot" <-> "non suivi" est dangereux : BOUCHON -> CAPSULE reste permis
+        // Seul le passage matière sèche <-> produit fini (suivi par lot) est dangereux : BOUCHON -> CAPSULE reste permis
         boolean lotTrackingChanges = newCategory.isLotTracked() != article.getCategory().isLotTracked();
         if (lotTrackingChanges && stockUsage.isUsedInStock(List.of(article.getId()))) {
             throw new BusinessRuleException("L'article " + article.getCode()
-                    + " a déjà des lots ou du stock : sa catégorie ne peut pas changer de mode de suivi par lot");
+                    + " a déjà du stock : il ne peut pas passer de matière sèche à produit fini, ni l'inverse");
         }
 
         article.setLabel(request.label().trim());

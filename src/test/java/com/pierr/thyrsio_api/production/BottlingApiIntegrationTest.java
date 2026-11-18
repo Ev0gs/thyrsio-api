@@ -106,8 +106,7 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
     @Test
     void closing_consumes_materials_draws_wine_and_stocks_bottles() throws Exception {
         String cork = createArticle("BOUCHON");
-        String corkLot = createLot(cork, "L-CLOSE");
-        move(cork, corkLot, "RECEPTION", "1000").andExpect(status().isCreated());
+        move(cork, null, "RECEPTION", "1000").andExpect(status().isCreated());
         String label = createArticle("ETIQUETTE");
         move(label, null, "RECEPTION", "1000").andExpect(status().isCreated());
         String product = createArticle("PRODUIT_FINI");
@@ -116,7 +115,7 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
         String bottling = id(plan(product, "ON_SITE", tank, TODAY, 1200,
                 materials(cork, "1200") + "," + materials(label, "1200")));
 
-        String json = body(close(bottling, 880, 20, "6.6", consumption(cork, corkLot, "900"), consumption(label, null, "900"))
+        String json = body(close(bottling, 880, 20, "6.6", consumption(cork, "900"), consumption(label, "900"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CLOSED"))
                 .andExpect(jsonPath("$.lotNumber", matchesPattern("L\\d{5}-\\d+")))
@@ -137,6 +136,26 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
     }
 
     @Test
+    void a_material_is_consumed_once_without_any_lot() throws Exception {
+        String label = createArticle("ETIQUETTE");
+        move(label, null, "RECEPTION", "1000").andExpect(status().isCreated());
+        String product = createArticle("PRODUIT_FINI");
+        String tank = tankWithWine("10");
+        String bottling = id(plan(product, "ON_SITE", tank, TODAY, 500, materials(label, "500")));
+
+        // Deux lignes pour la même étiquette : refusé (il n'y a plus de lots à distinguer)
+        close(bottling, 500, 0, "3.75", consumption(label, "300"), consumption(label, "200"))
+                .andExpect(status().isBadRequest());
+
+        close(bottling, 500, 0, "3.75", consumption(label, "500"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.consumptions[0].quantity").value(500))
+                .andExpect(jsonPath("$.consumptions[0].lotNumber").doesNotExist())
+                .andExpect(jsonPath("$.materials[0].lotTracked").doesNotExist());
+        assertThat(stockOf(label)).isEqualByComparingTo("500");
+    }
+
+    @Test
     void closing_with_insufficient_stock_changes_nothing() throws Exception {
         String label = createArticle("ETIQUETTE");
         move(label, null, "RECEPTION", "100").andExpect(status().isCreated());
@@ -144,7 +163,7 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
         String tank = tankWithWine("10");
         String bottling = id(plan(product, "ON_SITE", tank, TODAY, 500, materials(label, "500")));
 
-        close(bottling, 500, 0, "3.75", consumption(label, null, "500"))
+        close(bottling, 500, 0, "3.75", consumption(label, "500"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail", containsString("Stock insuffisant")));
 
@@ -221,10 +240,9 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
         return material(articleId, quantity);
     }
 
-    private static String consumption(String articleId, String lotId, String quantity) {
-        String lot = lotId == null ? "null" : "\"" + lotId + "\"";
+    private static String consumption(String articleId, String quantity) {
         return """
-                {"articleId": "%s", "lotId": %s, "quantity": %s}""".formatted(articleId, lot, quantity);
+                {"articleId": "%s", "quantity": %s}""".formatted(articleId, quantity);
     }
 
     private ResultActions close(String bottlingId, int produced, int broken, String wineHl, String... consumptions)

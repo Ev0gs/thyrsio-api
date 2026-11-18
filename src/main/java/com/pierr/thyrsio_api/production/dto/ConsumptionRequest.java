@@ -7,10 +7,9 @@ import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-/** Ce qui a réellement été consommé : un article, son lot s'il est suivi par lot, une quantité. */
+/** Ce qui a réellement été consommé : une matière sèche et sa quantité. */
 public record ConsumptionRequest(
         @NotNull UUID articleId,
-        UUID lotId,
         @NotNull @Positive @Digits(integer = 10, fraction = 4) BigDecimal quantity
 ) {
 }

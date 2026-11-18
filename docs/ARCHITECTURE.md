@@ -27,7 +27,7 @@ Les réponses du premier client fixent le périmètre initial ; chaque choix res
 | Numéros de lot | Règle propre au client, à venir | **Générateur paramétrable** ; lot porté par la ligne de mise |
 | Gencodes | Selon la commande, au choix ; origine encore inconnue | GTIN **facultatifs**, saisis ou générés ; option « étiquetage GS1 requis » par commande |
 | Expéditions | En général un chargement par commande, avec de la flexibilité | Un chargement peut regrouper plusieurs commandes, une commande peut partir en plusieurs fois |
-| Capsules CRD | Probablement utilisées | Catégorie CRD suivie par lots ; régime fiscal enregistré sur chaque chargement |
+| Capsules CRD | Probablement utilisées | Catégorie CRD (sans lot : les matières sèches ne sont pas suivies par lot) ; régime fiscal enregistré sur chaque chargement |
 | Autres logiciels | Ventes et facturation gérées ailleurs ; origine des commandes inconnue | Saisie des commandes dans l'API, **import** à prévoir si besoin |
 | Utilisateurs | 2, les co-gérants | Un seul rôle métier au départ ; des rôles plus fins restent possibles |
 
@@ -66,7 +66,7 @@ Le référentiel décrit tout ce qui existe, sans notion de quantité ; tous les
 | Entité | Rôle | Champs principaux |
 | --- | --- | --- |
 | Article | Tout ce qui se stocke : matières sèches et vin en vrac | code interne, libellé, catégorie, unité de stock, fournisseur principal, référence fournisseur, seuil d'alerte, actif ou archivé |
-| Catégorie d'article | Type d'article, **en table** et non en `enum` | code, libellé, unité par défaut, indicateur « suivi par lot », indicateur « réglementé » (CRD) |
+| Catégorie d'article | Type d'article, **en table** et non en `enum` | code, libellé, unité par défaut, indicateur « réglementé » (CRD). Seuls les produits finis sont suivis par lot |
 | Unité | Unité de mesure | code (`U`, `L`, `HL`, `KG`), libellé, nombre de décimales autorisées |
 | Cuvée | Le vin en tant que produit commercial | nom, appellation, couleur, millésime |
 | Produit fini | Ce qui sort d'une mise : une cuvée × un format × un conditionnement × un **habillage** | cuvée, contenance, bouteilles par carton, cartons par palette, habillage standard ou dédié à un client, GTIN bouteille et carton facultatifs |
@@ -90,7 +90,7 @@ Ce principe donne l'historique complet (qui, quand, pourquoi), la correction d'u
 
 | Entité | Rôle |
 | --- | --- |
-| Lot | Ensemble homogène d'un article : numéro de lot (unique par article), date limite éventuelle, notes |
+| Lot | Produits finis seulement (les bouteilles d'une mise) : numéro de lot (unique par article), date limite éventuelle, notes |
 | Mouvement | article, lot, quantité signée, type, date, auteur, référence de l'origine (réception, mise, chargement…) |
 | Solde | Stock actuel par article et par lot, mis à jour dans la même transaction que chaque mouvement |
 | Réservation | Quantité bloquée pour une mise planifiée ou une commande client, pas encore consommée ni expédiée |
@@ -108,7 +108,7 @@ Types de mouvement : réception, consommation de mise, production de mise, ajust
 - Saisie des réceptions, casses et ajustements.
 - Inventaire physique : saisie des quantités comptées, puis création automatique des mouvements d'écart.
 - Consultation par article ou par lot, et stock à une date donnée.
-- Choix du lot consommé en FIFO par défaut, avec la possibilité d'imposer un lot.
+- Les matières sèches ne sont pas suivies par lot (le client n'en a pas) : une mise consomme un article, pas un lot.
 
 ### Points techniques
 

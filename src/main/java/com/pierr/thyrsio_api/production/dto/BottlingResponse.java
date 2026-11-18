@@ -59,7 +59,6 @@ public record BottlingResponse(
             String articleLabel,
             String categoryLabel,
             String unitCode,
-            boolean lotTracked,
             BigDecimal plannedQuantity,
             BigDecimal stockQuantity,
             BigDecimal reservedBefore,
@@ -67,14 +66,12 @@ public record BottlingResponse(
     ) {
     }
 
-    /** Ce qui a été consommé, par lot. */
+    /** Ce qui a été consommé, par matière. */
     public record ConsumptionLine(
             UUID articleId,
             String articleCode,
             String articleLabel,
             String unitCode,
-            UUID lotId,
-            String lotNumber,
             BigDecimal quantity
     ) {
     }

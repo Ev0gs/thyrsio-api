@@ -164,7 +164,7 @@ public class Bottling {
 
     // ========== Cycle de vie ==========
 
-    record Consumed(UUID articleId, UUID lotId, BigDecimal quantity) {
+    record Consumed(UUID articleId, BigDecimal quantity) {
     }
 
     void close(int producedBottles, int brokenBottles, BigDecimal wineUsedHl, String lotNumber,
@@ -176,7 +176,7 @@ public class Bottling {
         this.wineUsedHl = wineUsedHl;
         this.lotNumber = lotNumber;
         consumed.forEach(line -> consumptions.add(
-                new BottlingConsumption(this, line.articleId(), line.lotId(), line.quantity())));
+                new BottlingConsumption(this, line.articleId(), line.quantity())));
         this.closedAt = Instant.now();
         this.closedBy = userId;
         touch();

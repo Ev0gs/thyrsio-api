@@ -23,10 +23,6 @@ public class ArticleCategory {
     @JoinColumn(name = "default_unit_id")
     private Unit defaultUnit;
 
-    // Les articles de cette catégorie sont suivis par lot
-    @Column(nullable = false)
-    private boolean lotTracked;
-
     // Soumis à la réglementation (capsules CRD)
     @Column(nullable = false)
     private boolean regulated;
@@ -38,11 +34,10 @@ public class ArticleCategory {
     protected ArticleCategory() {
     }
 
-    public ArticleCategory(String code, String label, Unit defaultUnit, boolean lotTracked, boolean regulated) {
+    public ArticleCategory(String code, String label, Unit defaultUnit, boolean regulated) {
         this.code = code;
         this.label = label;
         this.defaultUnit = defaultUnit;
-        this.lotTracked = lotTracked;
         this.regulated = regulated;
     }
 
@@ -62,8 +57,12 @@ public class ArticleCategory {
         return defaultUnit;
     }
 
+    /**
+     * Seuls les produits finis sont suivis par lot (le n° imprimé sur les bouteilles, donné par la mise).
+     * Les matières sèches ne le sont jamais.
+     */
     public boolean isLotTracked() {
-        return lotTracked;
+        return ArticleInfo.FINISHED_GOODS_CATEGORY.equals(code);
     }
 
     public boolean isRegulated() {
@@ -80,10 +79,6 @@ public class ArticleCategory {
 
     public void setDefaultUnit(Unit defaultUnit) {
         this.defaultUnit = defaultUnit;
-    }
-
-    public void setLotTracked(boolean lotTracked) {
-        this.lotTracked = lotTracked;
     }
 
     public void setRegulated(boolean regulated) {

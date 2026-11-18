@@ -16,7 +16,6 @@ import com.pierr.thyrsio_api.sales.OrderLookup;
 import com.pierr.thyrsio_api.sales.OrderStatus;
 import com.pierr.thyrsio_api.stock.LotService;
 import com.pierr.thyrsio_api.stock.MovementType;
-import com.pierr.thyrsio_api.stock.StockLookup;
 import com.pierr.thyrsio_api.stock.StockMovementCommand;
 import com.pierr.thyrsio_api.stock.StockService;
 import com.pierr.thyrsio_api.stock.dto.CreateLotRequest;
@@ -50,7 +49,6 @@ public class BottlingService {
     private final BottlingPlanner planner;
     private final ArticleLookup articleLookup;
     private final TankLookup tankLookup;
-    private final StockLookup stockLookup;
     private final StockService stockService;
     private final LotService lotService;
     private final CuverieService cuverieService;
@@ -63,7 +61,6 @@ public class BottlingService {
                            BottlingPlanner planner,
                            ArticleLookup articleLookup,
                            TankLookup tankLookup,
-                           StockLookup stockLookup,
                            StockService stockService,
                            LotService lotService,
                            CuverieService cuverieService,
@@ -76,7 +73,6 @@ public class BottlingService {
         this.planner = planner;
         this.articleLookup = articleLookup;
         this.tankLookup = tankLookup;
-        this.stockLookup = stockLookup;
         this.stockService = stockService;
         this.lotService = lotService;
         this.cuverieService = cuverieService;
@@ -181,11 +177,13 @@ public class BottlingService {
         Instant occurredAt = endOfMise.isBefore(Instant.now()) ? endOfMise : Instant.now();
         String reference = "Mise " + bottling.getCode();
 
-        // 1. Les matières sèches consommées, dans un ordre fixe (article puis lot) pour éviter les interblocages
+        // 1. Les matières sèches consommées, une ligne par article, dans un ordre fixe pour éviter les interblocages
         List<ConsumptionRequest> consumptions = request.consumptions().stream()
-                .sorted(Comparator.comparing(ConsumptionRequest::articleId)
-                        .thenComparing(ConsumptionRequest::lotId, Comparator.nullsFirst(Comparator.naturalOrder())))
+                .sorted(Comparator.comparing(ConsumptionRequest::articleId))
                 .toList();
+        if (consumptions.stream().map(ConsumptionRequest::articleId).distinct().count() != consumptions.size()) {
+            throw new IllegalArgumentException("Une matière sèche ne figure qu'une fois dans les consommations");
+        }
         List<Bottling.Consumed> consumed = new ArrayList<>();
         for (ConsumptionRequest line : consumptions) {
             ArticleInfo article = articleLookup.findById(line.articleId())
@@ -193,10 +191,10 @@ public class BottlingService {
             if (article.finishedGood()) {
                 throw new IllegalArgumentException(article.code() + " est un produit fini, pas une matière sèche");
             }
-            // StockService vérifie le lot, les décimales et le stock disponible (409 si insuffisant)
-            stockService.record(new StockMovementCommand(line.articleId(), line.lotId(), MovementType.CONSUMPTION,
+            // StockService vérifie les décimales et le stock disponible (409 si insuffisant)
+            stockService.record(new StockMovementCommand(line.articleId(), null, MovementType.CONSUMPTION,
                     line.quantity(), occurredAt, reference, null, userId));
-            consumed.add(new Bottling.Consumed(line.articleId(), line.lotId(), line.quantity()));
+            consumed.add(new Bottling.Consumed(line.articleId(), line.quantity()));
         }
 
         // 2. Le vin tiré de la cuve
@@ -359,8 +357,6 @@ public class BottlingService {
         bottling.getMaterials().forEach(material -> articleIds.add(material.getArticleId()));
         bottling.getConsumptions().forEach(line -> articleIds.add(line.getArticleId()));
         Map<UUID, ArticleInfo> articles = articleLookup.findAllById(articleIds);
-        Map<UUID, String> lotNumbers = stockLookup.lotNumbers(bottling.getConsumptions().stream()
-                .map(BottlingConsumption::getLotId).filter(Objects::nonNull).collect(Collectors.toSet()));
         TankInfo tank = bottling.getSourceTankId() != null
                 ? tankLookup.findById(bottling.getSourceTankId()).orElse(null)
                 : null;
@@ -371,7 +367,7 @@ public class BottlingService {
                     MaterialNeed need = needs.get(material.getArticleId());
                     return new BottlingResponse.MaterialLine(
                             material.getArticleId(), article.code(), article.label(), article.categoryLabel(),
-                            article.unitCode(), article.lotTracked(), material.getPlannedQuantity(),
+                            article.unitCode(), material.getPlannedQuantity(),
                             need != null ? need.stock() : null,
                             need != null ? need.reservedBefore() : null,
                             need != null ? need.shortage() : null);
@@ -384,8 +380,7 @@ public class BottlingService {
                 .map(line -> {
                     ArticleInfo article = articles.get(line.getArticleId());
                     return new BottlingResponse.ConsumptionLine(line.getArticleId(), article.code(), article.label(),
-                            article.unitCode(), line.getLotId(),
-                            line.getLotId() != null ? lotNumbers.get(line.getLotId()) : null, line.getQuantity());
+                            article.unitCode(), line.getQuantity());
                 })
                 .sorted(Comparator.comparing(BottlingResponse.ConsumptionLine::articleLabel))
                 .toList();

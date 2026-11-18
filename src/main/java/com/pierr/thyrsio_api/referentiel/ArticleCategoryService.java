@@ -1,6 +1,5 @@
 package com.pierr.thyrsio_api.referentiel;
 
-import com.pierr.thyrsio_api.common.BusinessRuleException;
 import com.pierr.thyrsio_api.common.Codes;
 import com.pierr.thyrsio_api.common.DuplicateCodeException;
 import com.pierr.thyrsio_api.common.ResourceNotFoundException;
@@ -18,17 +17,11 @@ public class ArticleCategoryService {
 
     private final ArticleCategoryRepository articleCategoryRepository;
     private final UnitRepository unitRepository;
-    private final ArticleRepository articleRepository;
-    private final ArticleStockUsage stockUsage;
 
     public ArticleCategoryService(ArticleCategoryRepository articleCategoryRepository,
-                                  UnitRepository unitRepository,
-                                  ArticleRepository articleRepository,
-                                  ArticleStockUsage stockUsage) {
+                                  UnitRepository unitRepository) {
         this.articleCategoryRepository = articleCategoryRepository;
         this.unitRepository = unitRepository;
-        this.articleRepository = articleRepository;
-        this.stockUsage = stockUsage;
     }
 
     @Transactional(readOnly = true)
@@ -53,7 +46,6 @@ public class ArticleCategoryService {
                 code,
                 request.label().trim(),
                 findUnitByCode(request.defaultUnitCode()),
-                request.lotTracked(),
                 request.regulated()
         );
         return ArticleCategoryResponse.from(articleCategoryRepository.save(articleCategory));
@@ -62,18 +54,8 @@ public class ArticleCategoryService {
     @Transactional
     public ArticleCategoryResponse update(UUID id, UpdateArticleCategoryRequest request) {
         ArticleCategory articleCategory = findCategory(id);
-
-        if (request.lotTracked() != articleCategory.isLotTracked()) {
-            List<UUID> articleIds = articleRepository.findIdsByCategoryId(articleCategory.getId());
-            if (stockUsage.isUsedInStock(articleIds)) {
-                throw new BusinessRuleException("Des articles de la catégorie " + articleCategory.getCode()
-                        + " ont déjà des lots ou du stock : le suivi par lot ne peut plus être modifié");
-            }
-        }
-
         articleCategory.setLabel(request.label().trim());
         articleCategory.setDefaultUnit(findUnitByCode(request.defaultUnitCode()));
-        articleCategory.setLotTracked(request.lotTracked());
         articleCategory.setRegulated(request.regulated());
         return ArticleCategoryResponse.from(articleCategory);
     }

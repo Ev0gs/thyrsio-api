@@ -26,12 +26,11 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
     @Test
     void reception_then_consumption_updates_balance() throws Exception {
         String article = createArticle("BOUCHON");
-        String lot = createLot(article, "L-1");
 
-        move(article, lot, "RECEPTION", "10000")
+        move(article, null, "RECEPTION", "10000")
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.lotNumber").value("L-1"));
-        move(article, lot, "CONSUMPTION", "3000")
+                .andExpect(jsonPath("$.lotNumber").doesNotExist());
+        move(article, null, "CONSUMPTION", "3000")
                 .andExpect(status().isCreated());
 
         assertThat(stockOf(article)).isEqualByComparingTo("7000");
@@ -40,10 +39,9 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
     @Test
     void consumption_beyond_stock_is_refused_and_stock_is_unchanged() throws Exception {
         String article = createArticle("BOUCHON");
-        String lot = createLot(article, "L-1");
-        move(article, lot, "RECEPTION", "100").andExpect(status().isCreated());
+        move(article, null, "RECEPTION", "100").andExpect(status().isCreated());
 
-        move(article, lot, "CONSUMPTION", "150")
+        move(article, null, "CONSUMPTION", "150")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail", containsString("Stock insuffisant")));
 
@@ -85,11 +83,26 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
         move(article, null, "SHIPMENT", "5").andExpect(status().isBadRequest());
     }
 
-    // ==================== Règles sur les lots ====================
+    // ==================== Règles sur les lots (produits finis seulement) ====================
+
+    @Test
+    void dry_goods_are_never_lot_tracked() throws Exception {
+        String cork = createArticle("BOUCHON");
+
+        // Ni lot sur un mouvement, ni création de lot : les matières sèches n'en ont pas
+        move(cork, UUID.randomUUID().toString(), "RECEPTION", "10")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail", containsString("n'est pas suivi par lot")));
+        postJson("/api/stock/lots", """
+                {"articleId": "%s", "lotNumber": "L-1"}
+                """.formatted(cork)).andExpect(status().isBadRequest());
+        getAsUser("/api/referentiel/categories")
+                .andExpect(jsonPath("$[0].lotTracked").doesNotExist());
+    }
 
     @Test
     void lot_is_required_for_a_lot_tracked_article() throws Exception {
-        String article = createArticle("BOUCHON");
+        String article = createArticle("PRODUIT_FINI");
 
         move(article, null, "RECEPTION", "10")
                 .andExpect(status().isBadRequest())
@@ -107,8 +120,8 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
 
     @Test
     void lot_must_belong_to_the_article() throws Exception {
-        String articleA = createArticle("BOUCHON");
-        String articleB = createArticle("BOUCHON");
+        String articleA = createArticle("PRODUIT_FINI");
+        String articleB = createArticle("PRODUIT_FINI");
         String lotOfA = createLot(articleA, "L-A");
 
         move(articleB, lotOfA, "RECEPTION", "10")
@@ -120,23 +133,25 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
 
     @Test
     void article_with_stock_cannot_switch_lot_tracking() throws Exception {
-        String article = createArticle("BOUCHON");
-        move(article, createLot(article, "L-1"), "RECEPTION", "10").andExpect(status().isCreated());
+        String product = createArticle("PRODUIT_FINI");
+        move(product, createLot(product, "L-1"), "RECEPTION", "10").andExpect(status().isCreated());
 
-        // BOUCHON (suivi par lot) -> ETIQUETTE (non suivi) : refusé
-        putJson("/api/referentiel/articles/" + article, """
-                {"label": "Bouchon", "categoryCode": "ETIQUETTE"}
+        // Produit fini (suivi par lot) -> BOUCHON (matière sèche) : refusé
+        putJson("/api/referentiel/articles/" + product, """
+                {"label": "Bouchon", "categoryCode": "BOUCHON"}
                 """).andExpect(status().isConflict());
 
-        // BOUCHON -> CAPSULE (suivie par lot elle aussi) : permis
-        putJson("/api/referentiel/articles/" + article, """
+        // BOUCHON -> CAPSULE (deux matières sèches) : permis, même avec du stock
+        String cork = createArticle("BOUCHON");
+        move(cork, null, "RECEPTION", "10").andExpect(status().isCreated());
+        putJson("/api/referentiel/articles/" + cork, """
                 {"label": "Bouchon", "categoryCode": "CAPSULE"}
                 """).andExpect(status().isOk());
     }
 
     @Test
     void article_without_stock_can_switch_lot_tracking() throws Exception {
-        String article = createArticle("BOUCHON");
+        String article = createArticle("PRODUIT_FINI");
 
         putJson("/api/referentiel/articles/" + article, """
                 {"label": "Finalement une étiquette", "categoryCode": "ETIQUETTE"}
@@ -213,13 +228,13 @@ class StockApiIntegrationTest extends ApiIntegrationTest {
     void overview_sums_lots_and_flags_articles_below_threshold() throws Exception {
         // Seuil de 5000, stock réparti sur deux lots : 1200 + 3000 = 4200 → sous le seuil
         String article = JsonPath.read(body(postJson("/api/referentiel/articles", """
-                {"code": "%s", "label": "Bouchon vue d'ensemble", "categoryCode": "BOUCHON", "alertThreshold": 5000}
-                """.formatted(unique("BOUCHON"))).andExpect(status().isCreated())), "$.id");
+                {"code": "%s", "label": "Bouteilles vue d'ensemble", "categoryCode": "PRODUIT_FINI", "alertThreshold": 5000}
+                """.formatted(unique("PF"))).andExpect(status().isCreated())), "$.id");
         move(article, createLot(article, "L-A"), "RECEPTION", "1200").andExpect(status().isCreated());
         move(article, createLot(article, "L-B"), "RECEPTION", "3000").andExpect(status().isCreated());
-        String empty = createArticle("ETIQUETTE");  // jamais de stock → rupture
+        String empty = createArticle("PRODUIT_FINI");  // jamais de stock → rupture
 
-        String json = body(getAsUser("/api/stock/overview").andExpect(status().isOk()));
+        String json = body(getAsUser("/api/stock/overview?finishedGoods=true").andExpect(status().isOk()));
 
         String bouchon = "$[?(@.articleId == '" + article + "')]";
         // Un filtre [?(...)] renvoie toujours une liste, même pour une seule ligne

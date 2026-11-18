@@ -44,20 +44,6 @@ FROM (VALUES
          LEFT JOIN suppliers s ON s.name = v.supplier
     ON CONFLICT (code) DO NOTHING;
 
--- ---------- Lots (articles suivis par lot : bouchons et capsules) ----------
-INSERT INTO lots (article_id, lot_number, notes)
-SELECT a.id, v.lot_number, v.notes
-FROM (VALUES
-          ('BCH-LIE-4924',  '24-117',    'Livraison partielle, reliquat attendu'),
-          ('BCH-LIE-4924',  '24-131',    NULL),
-          ('BCH-TECH-4424', 'T-8812',    NULL),
-          ('CAP-ETN-NR',    'E-5521',    NULL),
-          ('CAP-CRD-R75',   'C-2026-08', 'Capsules CRD : à déclarer en DRM'),
-          ('CAP-CRD-R150',  'C-2026-09', 'Capsules CRD : à déclarer en DRM')
-     ) AS v(article, lot_number, notes)
-         JOIN articles a ON a.code = v.article
-    ON CONFLICT (article_id, lot_number) DO NOTHING;
-
 -- ---------- Clients ----------
 INSERT INTO clients (code, name, country_code, language, address_line1, postal_code, city,
                      email, phone, vat_number, default_incoterm, gs1_labeling_required, notes)
@@ -115,20 +101,20 @@ FROM (VALUES
           ('BTL-BDX-150',   NULL,        'RECEPTION',    4400, 18, '10:00', 'BL VSO-26-1201', NULL),
           ('BTL-BDX-150',   NULL,        'CONSUMPTION', -1200,  9, '16:50', 'Mise MB-0410',   NULL),
           ('BTL-BOURG-75',  NULL,        'RECEPTION',    1800, 30, '09:00', 'BL VSO-26-1102', NULL),
-          -- Bouchons (suivis par lot)
-          ('BCH-LIE-4924',  '24-117',    'RECEPTION',    7200, 15, '11:20', 'BL BL-77812',    NULL),
-          ('BCH-LIE-4924',  '24-117',    'CONSUMPTION', -6000,  1, '17:40', 'Mise MB-0412',   NULL),
-          ('BCH-LIE-4924',  '24-131',    'RECEPTION',    3800, 19, '14:05', 'BL BL-77650',    NULL),
-          ('BCH-LIE-4924',  '24-131',    'CONSUMPTION', -1200,  9, '16:50', 'Mise MB-0410',   NULL),
-          ('BCH-TECH-4424', 'T-8812',    'RECEPTION',   18800, 12, '09:45', 'BL BL-77901',    NULL),
-          ('BCH-TECH-4424', 'T-8812',    'CONSUMPTION', -4800,  6, '17:30', 'Mise MB-0411',   NULL),
-          -- Capsules (suivies par lot)
-          ('CAP-ETN-NR',    'E-5521',    'RECEPTION',   14200, 13, '10:30', 'BL CA-26-0455',  NULL),
-          ('CAP-ETN-NR',    'E-5521',    'CONSUMPTION', -4800,  6, '17:30', 'Mise MB-0411',   NULL),
-          ('CAP-CRD-R75',   'C-2026-08', 'RECEPTION',    6800, 10, '15:10', 'BL CA-26-0472',  NULL),
-          ('CAP-CRD-R75',   'C-2026-08', 'CONSUMPTION', -6000,  1, '17:40', 'Mise MB-0412',   NULL),
-          ('CAP-CRD-R150',  'C-2026-09', 'RECEPTION',    1200, 25, '11:00', 'BL CA-26-0398',  NULL),
-          ('CAP-CRD-R150',  'C-2026-09', 'CONSUMPTION', -1200,  9, '16:50', 'Mise MB-0410',   NULL),
+          -- Bouchons
+          ('BCH-LIE-4924',  NULL,        'RECEPTION',    7200, 15, '11:20', 'BL BL-77812',    NULL),
+          ('BCH-LIE-4924',  NULL,        'CONSUMPTION', -6000,  1, '17:40', 'Mise MB-0412',   NULL),
+          ('BCH-LIE-4924',  NULL,        'RECEPTION',    3800, 19, '14:05', 'BL BL-77650',    NULL),
+          ('BCH-LIE-4924',  NULL,        'CONSUMPTION', -1200,  9, '16:50', 'Mise MB-0410',   NULL),
+          ('BCH-TECH-4424', NULL,        'RECEPTION',   18800, 12, '09:45', 'BL BL-77901',    NULL),
+          ('BCH-TECH-4424', NULL,        'CONSUMPTION', -4800,  6, '17:30', 'Mise MB-0411',   NULL),
+          -- Capsules
+          ('CAP-ETN-NR',    NULL,        'RECEPTION',   14200, 13, '10:30', 'BL CA-26-0455',  NULL),
+          ('CAP-ETN-NR',    NULL,        'CONSUMPTION', -4800,  6, '17:30', 'Mise MB-0411',   NULL),
+          ('CAP-CRD-R75',   NULL,        'RECEPTION',    6800, 10, '15:10', 'BL CA-26-0472',  NULL),
+          ('CAP-CRD-R75',   NULL,        'CONSUMPTION', -6000,  1, '17:40', 'Mise MB-0412',   NULL),
+          ('CAP-CRD-R150',  NULL,        'RECEPTION',    1200, 25, '11:00', 'BL CA-26-0398',  NULL),
+          ('CAP-CRD-R150',  NULL,        'CONSUMPTION', -1200,  9, '16:50', 'Mise MB-0410',   NULL),
           -- Étiquettes, contre-étiquettes, collerettes (ETQ-CDB-22 : jamais reçue)
           ('ETQ-BDXS-23',   NULL,        'RECEPTION',   22800, 16, '09:30', 'BL IEG-5532',    NULL),
           ('ETQ-BDXS-23',   NULL,        'CONSUMPTION', -4800,  6, '17:30', 'Mise MB-0411',   NULL),
