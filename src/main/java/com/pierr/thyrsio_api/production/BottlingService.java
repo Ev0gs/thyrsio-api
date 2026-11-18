@@ -97,11 +97,12 @@ public class BottlingService {
      * jours y tombe), filtrables par statut. Sans dates : toutes.
      */
     @Transactional(readOnly = true)
-    public Page<BottlingResponse> list(LocalDate from, LocalDate to, BottlingStatus status, Pageable pageable) {
+    public Page<BottlingResponse> list(LocalDate from, LocalDate to, Collection<BottlingStatus> statuses,
+                                       Pageable pageable) {
         List<Specification<Bottling>> filters = new ArrayList<>();
         if (from != null) filters.add((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("endDate"), from));
         if (to != null) filters.add((root, query, cb) -> cb.lessThanOrEqualTo(root.get("startDate"), to));
-        if (status != null) filters.add((root, query, cb) -> cb.equal(root.get("status"), status));
+        if (statuses != null && !statuses.isEmpty()) filters.add((root, query, cb) -> root.get("status").in(statuses));
         Page<Bottling> page = bottlingRepository.findAll(Specification.allOf(filters), pageable);
         Map<UUID, BottlingResponse> responses = toResponses(page.getContent()).stream()
                 .collect(Collectors.toMap(BottlingResponse::id, response -> response));

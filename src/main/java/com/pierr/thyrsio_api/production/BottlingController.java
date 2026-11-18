@@ -21,6 +21,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 @Tag(name = "Production — Mises en bouteille")
@@ -41,7 +42,8 @@ public class BottlingController {
     public Page<BottlingResponse> list(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) BottlingStatus status,
+            // Un ou plusieurs : status=PLANNED,IN_PROGRESS pour tout ce qui reste à faire
+            @RequestParam(required = false) List<BottlingStatus> status,
             @ParameterObject @PageableDefault(size = 100, sort = "startDate", direction = Sort.Direction.ASC) Pageable pageable) {
         return bottlingService.list(from, to, status, pageable);
     }

@@ -271,6 +271,10 @@ class BottlingApiIntegrationTest extends ApiIntegrationTest {
                 .andExpect(jsonPath("$.productions[1].status").value("PLANNED")));
         assertThat(stockOf(morningProduct)).isEqualByComparingTo("590");
 
+        List<String> open = JsonPath.read(body(getAsUser("/api/production/bottlings?status=PLANNED,IN_PROGRESS&size=500")),
+                "$.content[*].id");
+        assertThat(open).contains(JsonPath.<String>read(inProgress, "$.id"));
+
         // L'après-midi aussi : la mise est clôturée
         close(inProgress, 1, 900, 0, null)
                 .andExpect(status().isOk())
