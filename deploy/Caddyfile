@@ -1,0 +1,51 @@
+# Caddy : HTTPS automatique (Let's Encrypt), l'application web, et le passage vers l'API et Keycloak.
+{
+	email {$ACME_EMAIL}
+}
+
+# Les en-têtes de sécurité, communs aux deux sites
+(security) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# ---------- L'application : app.mondomaine.fr ----------
+{$APP_DOMAIN} {
+	import security
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /srv
+		# Une route Angular (/production/mises/...) renvoie index.html, qui fait la navigation
+		try_files {path} /index.html
+		file_server
+		header X-Frame-Options "DENY"
+		# Les fichiers compilés ont une empreinte dans leur nom : en cache pour un an ; index.html jamais
+		@hashed path_regexp -[0-9A-Za-z_-]{8}\.(js|css)$
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@index path / /index.html
+		header @index Cache-Control "no-cache"
+	}
+}
+
+# ---------- Keycloak : auth.mondomaine.fr ----------
+{$AUTH_DOMAIN} {
+	import security
+
+	# La console d'administration : réservée au réseau du serveur (l'API) et aux adresses autorisées
+	@admin_blocked {
+		path /admin /admin/*
+		not remote_ip private_ranges {$KEYCLOAK_ADMIN_ALLOWED_IPS}
+	}
+	respond @admin_blocked "Accès réservé" 403
+
+	reverse_proxy keycloak:8080
+}

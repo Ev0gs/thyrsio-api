@@ -1,0 +1,103 @@
+# Thyrsio en production : à lancer depuis ce dossier, sur le serveur.
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+# Le dépôt thyrsio-web doit être cloné à côté de thyrsio-api (../../thyrsio-web).
+#
+# Seul Caddy est joignable depuis Internet (ports 80 et 443) : il obtient les certificats HTTPS,
+# sert l'application web et transmet /api à l'API et auth.* à Keycloak. La base n'est jamais exposée.
+
+name: thyrsio
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Lus par les scripts d'initialisation (../init) au tout premier démarrage
+      THYRSIO_APP_PASSWORD: ${THYRSIO_APP_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ../init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    restart: unless-stopped
+    # Mode production ; le realm n'est importé que s'il n'existe pas encore
+    command: start --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      # Son adresse publique ; Caddy lui parle en HTTP sur le réseau interne
+      KC_HOSTNAME: https://${AUTH_DOMAIN}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+    volumes:
+      - ../keycloak/import:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      THYRSIO_APP_PASSWORD: ${THYRSIO_APP_PASSWORD}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      APP_DOMAIN: ${APP_DOMAIN}
+      AUTH_DOMAIN: ${AUTH_DOMAIN}
+      TZ: Europe/Paris
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  web:
+    # L'application web compilée, servie par Caddy, qui fait aussi le proxy et le HTTPS
+    build:
+      context: ../../thyrsio-web
+      args:
+        KEYCLOAK_URL: https://${AUTH_DOMAIN}
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      AUTH_DOMAIN: ${AUTH_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      KEYCLOAK_ADMIN_ALLOWED_IPS: ${KEYCLOAK_ADMIN_ALLOWED_IPS:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      default:
+        # L'API joint Keycloak par son adresse publique sans sortir du serveur : ce nom mène ici
+        aliases:
+          - ${AUTH_DOMAIN}
+    depends_on:
+      - api
+      - keycloak
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

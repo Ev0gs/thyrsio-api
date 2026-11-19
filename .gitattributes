@@ -1,3 +1,6 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+# Les scripts et la configuration tournent sur le serveur Linux : toujours en fins de ligne LF
 *.sh  text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf
